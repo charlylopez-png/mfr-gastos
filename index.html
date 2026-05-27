@@ -1269,11 +1269,11 @@ create policy "auth_storage" on storage.objects for all to authenticated using (
 // ══════════════════════════════════════════════════════════
 //  ⚙️  CONFIGURACIÓN — edita estas dos líneas con tus datos
 // ══════════════════════════════════════════════════════════
-const SUPABASE_URL  = 'https://rtivrsmvjardvkbghlin.supabase.co';   // ← cambia esto
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ0aXZyc212amFyZHZrYmdobGluIiwicm9sZSI6ImFub24iLCJpYXQiOj';                        // ← cambia esto
+const SUPABASE_URL  = 'https://rtivrsmvjardvkbghlin.supabase.co';   
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ0aXZyc212amFyZHZrYmdobGluIiwicm9sZSI6ImFub24iLCJpYXQiOj';                        
 // ══════════════════════════════════════════════════════════
 
-const IS_CONFIGURED = !SUPABASE_URL.includes('rtivrsmvjardvkbghlin');
+const IS_CONFIGURED = true;
 
 let sb = null;
 if (IS_CONFIGURED) {
