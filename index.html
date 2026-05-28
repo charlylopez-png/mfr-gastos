@@ -1,0 +1,1770 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MFR · Gestión de Gastos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+
+// ── DINGO GROUP TOGGLE ───────────────────────────────────
+async 
+
+function buildPedidoLineaHTML(r) {
+  const rd = docs[r.id] || {};
+  const hasPres = !!rd.presupuesto, hasAlb = !!rd.albaran, hasFact = !!rd.factura;
+  const hasNota = !!(r.notas && r.notas.trim());
+  const tipo = currentPedidoTipo;
+  let html = '<div class="pedido-linea">';
+  html += '<div class="pedido-linea-info">';
+  html += '<div class="pedido-linea-desc">' + (r.descripcion || r.elemento || '—') + '</div>';
+  html += '<div class="pedido-linea-meta">' + (r.produccion||'') + ' · ' + (r.elemento||'') + ' · ' + fmt(r.coste) + ' · refact. ' + (r.refact!=null?fmt(r.refact):'—') + '</div>';
+  html += '</div>';
+  html += '<div class="pedido-linea-actions">';
+  html += '<span class="badge-dingo ' + (r.dingo?'yes':'no') + '">' + (r.dingo?'✓':'✗') + '</span>';
+  if (hasNota) html += '<span class="nota-badge" onclick="showNota('' + r.id + '','linea')">📝 Nota</span>';
+  html += '<span class="doc-pill ' + (hasPres?'has':'missing') + '" onclick="' + (hasPres?'viewDoc(''+r.id+'','presupuesto')':'openGastoModal(''+r.id+'',''+tipo+'')') + '">PRE</span>';
+  html += '<span class="doc-pill ' + (hasAlb?'has':'missing') + '" onclick="' + (hasAlb?'viewDoc(''+r.id+'','albaran')':'openGastoModal(''+r.id+'',''+tipo+'')') + '">ALB</span>';
+  html += '<span class="doc-pill ' + (hasFact?'has':'missing') + '" onclick="' + (hasFact?'viewDoc(''+r.id+'','factura')':'openGastoModal(''+r.id+'',''+tipo+'')') + '">FAC</span>';
+  html += '<button class="btn-row" onclick="openGastoModal('' + r.id + '','' + tipo + '')">Editar</button>';
+  html += '</div></div>';
+  return html;
+}
+
+
+
+function handleDragOver(e, tipo) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.add('drag-over');
+}
+function handleDragLeave(e, tipo) {
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.remove('drag-over');
+}
+function handleDrop(e, tipo) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const fakeInput = { files: [file] };
+  uploadDoc(fakeInput, tipo);
+}
+
+
+// ══════════════════════════════════════════════════════════
+//  CONFIG: Proveedores & Producciones
+// ══════════════════════════════════════════════════════════
+const configData = { proveedores: [], producciones: [], elementos: [] };
+
+
+function renderConfig() {
+  ['proveedores','producciones','elementos'].forEach(tipo => {
+    const list = document.getElementById('list-' + tipo);
+    const items = configData[tipo];
+    if (!items.length) {
+      list.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text3);padding:8px 10px">Sin elementos</div>';
+      return;
+    }
+    list.innerHTML = items.map((item, i) => `
+      <div class="config-item">
+        <span>${item}</span>
+        <button class="config-item-del" onclick="removeConfigItem('${tipo}',${i})" title="Eliminar">✕</button>
+      </div>`).join('');
+  });
+  updateFormSelects();
+}
+
+async function addConfigItem(tipo) {
+  const inputId = tipo === 'proveedores' ? 'new-proveedor' : tipo === 'producciones' ? 'new-produccion' : 'new-elemento';
+  const input = document.getElementById(inputId);
+  const val = input.value.trim().toUpperCase();
+  if (!val) return;
+  if (configData[tipo].includes(val)) { toast('Ya existe', 'info'); return; }
+  configData[tipo].push(val);
+  configData[tipo].sort();
+  input.value = '';
+  try {
+    const tipoVal = tipo === 'proveedores' ? 'proveedor' : tipo === 'producciones' ? 'produccion' : 'elemento';
+    await sb.from('config').insert({ tipo: tipoVal, nombre: val });
+  } catch(e) { /* table may not exist */ }
+  renderConfig();
+}
+
+async function removeConfigItem(tipo, idx) {
+  const nombre = configData[tipo][idx];
+  configData[tipo].splice(idx, 1);
+  try {
+    const tipoVal2 = tipo === 'proveedores' ? 'proveedor' : tipo === 'producciones' ? 'produccion' : 'elemento';
+    await sb.from('config').delete().eq('tipo', tipoVal2).eq('nombre', nombre);
+  } catch(e) { /* ignore */ }
+  renderConfig();
+}
+
+function updateFormSelects() {
+  populateSelect('f-proveedor', configData.proveedores, '— Sin proveedor —');
+  populateSelect('f-produccion', configData.producciones, '— Sin producción —');
+  populateSelect('f-elemento', configData.elementos, '— Sin elemento —');
+}
+
+function populateSelect(id, items, placeholder) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = `<option value="">${placeholder}</option>` +
+    items.map(v => `<option value="${v}">${v}</option>`).join('');
+  if (current) sel.value = current;
+}
+
+// ══════════════════════════════════════════════════════════
+//  GROUPED VIEW
+// ══════════════════════════════════════════════════════════
+const viewMode = { mantenimiento: 'flat', alquiler: 'flat', compras: 'flat' };
+const groupOpen = {};
+
+function toggleViewMode(tipo) {
+  viewMode[tipo] = viewMode[tipo] === 'flat' ? 'grouped' : 'flat';
+  document.querySelectorAll(`.view-btn[data-tipo="${tipo}"]`).forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === viewMode[tipo]);
+  });
+  renderTable(tipo);
+}
+
+function toggleGroup(key) {
+  groupOpen[key] = !groupOpen[key];
+  const rows = document.querySelectorAll(`.group-rows[data-key="${key}"]`);
+  const toggle = document.querySelector(`.group-toggle[data-key="${key}"]`);
+  rows.forEach(r => r.style.display = groupOpen[key] ? '' : 'none');
+  if (toggle) toggle.classList.toggle('open', groupOpen[key]);
+}
+
+function renderGroupedTable(tipo, rows) {
+  const isMant = tipo === 'mantenimiento';
+  const colCount = isMant ? 13 : 12;
+
+  // Group by num_pedido first
+  const byPedido = {};
+  rows.forEach(r => {
+    const key = r.num_pedido || '(sin pedido)';
+    if (!byPedido[key]) byPedido[key] = { rows: [], proveedor: r.proveedor, docs: docs[r.id] || {} };
+    byPedido[key].rows.push(r);
+    // Collect all docs for this pedido
+    if (docs[r.id]) Object.assign(byPedido[key].docs, docs[r.id]);
+  });
+
+  let html = '';
+  Object.entries(byPedido).forEach(([pedido, group]) => {
+    const key = 'grp_' + pedido.replace(/\W/g,'_');
+    const isOpen = groupOpen[key] === true; // collapsed by default
+    groupOpen[key] = isOpen;
+    const totalCoste = group.rows.reduce((s,r) => s+(r.coste||0), 0);
+    const totalRefact = group.rows.reduce((s,r) => s+(r.refact||0), 0);
+    const d = group.docs;
+    const hasPres = !!d.presupuesto, hasAlb = !!d.albaran, hasFact = !!d.factura;
+
+    // Get all docs for this pedido group (from any row)
+    const pedidoDocs = {};
+    group.rows.forEach(r => { if(docs[r.id]) Object.assign(pedidoDocs, docs[r.id]); });
+
+    const pedNota = pedidoData[pedido]?.nota;
+    html += `<tr class="group-header" onclick="toggleGroup('${key}')">
+      <td colspan="${isMant ? 6 : 5}">
+        <span class="group-toggle ${isOpen?'open':''}" data-key="${key}">▶</span>
+        <span class="group-title">${pedido}</span>
+        <span class="group-meta">${group.proveedor||''} · ${group.rows.length} líneas</span>
+        ${pedNota ? '<span class="nota-badge" onclick="event.stopPropagation();showNotaPedido(this)" data-pedido="' + pedido + '" style="margin-left:8px">📝 Nota</span>' : ''}
+      </td>
+      <td class="num">${fmt(totalCoste)}</td>
+      <td class="num positive">${fmt(totalRefact)}</td>
+      <td></td>
+      <td>
+        <div class="doc-status">
+          <span class="doc-pill ${hasPres?'has':'missing'}" onclick="event.stopPropagation();hasPres?viewDocFromGroup(${JSON.stringify(pedidoDocs).replace(/"/g,'&quot;')},'presupuesto'):openPedidoModal('${pedido}','${tipo}')">PRE</span>
+          <span class="doc-pill ${hasAlb?'has':'missing'}" onclick="event.stopPropagation();hasAlb?viewDocFromGroup(${JSON.stringify(pedidoDocs).replace(/"/g,'&quot;')},'albaran'):openPedidoModal('${pedido}','${tipo}')">ALB</span>
+          <span class="doc-pill ${hasFact?'has':'missing'}" onclick="event.stopPropagation();hasFact?viewDocFromGroup(${JSON.stringify(pedidoDocs).replace(/"/g,'&quot;')},'factura'):openPedidoModal('${pedido}','${tipo}')">FAC</span>
+        </div>
+      </td>
+      <td><button class="btn-row" onclick="event.stopPropagation();openPedidoModal('${pedido}','${tipo}')">Editar pedido</button></td>
+      <td onclick="event.stopPropagation()">\${renderDingoGroupBadge(group.rows, pedido, tipo)}</td>
+    </tr>\`;
+
+    // Subgroup by produccion
+    const byProd = {};
+    group.rows.forEach(r => {
+      const p = r.produccion || '(sin producción)';
+      if (!byProd[p]) byProd[p] = [];
+      byProd[p].push(r);
+    });
+
+    Object.entries(byProd).forEach(([prod, prodRows]) => {
+      const prodTotal = prodRows.reduce((s,r) => s+(r.refact||0), 0);
+      const prodStyle = isOpen ? '' : 'display:none';
+      html += '<tr class="prod-subheader group-rows" data-key="' + key + '" style="' + prodStyle + '">' +
+        '<td colspan="' + colCount + '">◈ ' + prod + ' &nbsp;·&nbsp; refact. ' + fmt(prodTotal) + '</td>' +
+        '</tr>';
+      prodRows.forEach(r => {
+        const rd = docs[r.id] || {};
+        const rowStyle = isOpen ? '' : 'display:none';
+        html += '<tr class="group-rows" data-key="' + key + '" style="' + rowStyle + '">' +
+          '<td class="highlight">' + fmtDate(r.fecha_envio) + '</td>' +
+          '<td><span class="badge-mes">' + (r.mes||'').substring(0,3) + '</span></td>' +
+          (isMant ? '<td>' + (r.code||'') + '</td>' : '') +
+          '<td title="' + (r.elemento||'') + '">' + (r.elemento ? '<span class="badge-elem ' + (r.elemento==='CAM'?'cam':r.elemento==='AUDIO'?'audio':r.elemento==='LIGHT'?'light':r.elemento==='LENS'?'lens':(r.elemento==='AUTOMÓVILES'||r.elemento==='AUTOMOVILES')?'auto':'other') + '">' + r.elemento + '</span>' : '') + '</td>' +
+          '<td title="' + (r.descripcion||'') + '" style="max-width:180px">' + (r.descripcion||'') + '</td>' +
+          '<td>' + (r.produccion ? '<span class="badge-prod ' + (r.produccion==='A3 MADRID'?'a3-mad':r.produccion.startsWith('A3')?'a3-other':r.produccion==='LA SEXTA MADRID'?'sexta-mad':(r.produccion.includes('SEXTA')||r.produccion.includes('COLUMNA'))?'sexta-other':'other') + '">' + r.produccion + '</span>' : '') + '</td>' +
+          '<td class="num">' + (r.coste!=null?fmt(r.coste):'—') + '</td>' +
+          '<td class="num positive">' + (r.refact!=null?fmt(r.refact):'—') + '</td>' +
+          '<td></td><td></td>' +
+          '<td><span class="badge-dingo ' + (r.dingo?'yes':'no') + '">' + (r.dingo?'✓':'✗') + '</span></td>' +
+          '<td><div class="row-actions"><button class="btn-row" onclick="openGastoModal('' + r.id + '','' + tipo + '')">Editar</button></div></td>' +
+          '</tr>';
+      });
+    });
+  });
+  return html;
+}
+
+// ══════════════════════════════════════════════════════════
+//  DOC VIEWER
+// ══════════════════════════════════════════════════════════
+async function viewDoc(gastoId, tipo) {
+  const d = docs[gastoId];
+  if (!d || !d[tipo]) {
+    // No doc - open edit modal to upload
+    openGastoModal(gastoId, currentTab);
+    return;
+  }
+  await openDocViewer(d[tipo]);
+}
+
+async function viewDocFromGroup(pedidoDocs, tipo) {
+  if (!pedidoDocs[tipo]) { toast('Sin documento ' + tipo, 'info'); return; }
+  await openDocViewer(pedidoDocs[tipo]);
+}
+
+async function openDocViewer(doc) {
+  openModal('docviewer');
+  const content = document.getElementById('docviewer-content');
+  const nameEl = document.getElementById('docviewer-name');
+  const dlBtn = document.getElementById('docviewer-download');
+  nameEl.textContent = doc.nombre_archivo || 'Documento';
+  content.innerHTML = '<div style="font-family:var(--mono);color:var(--text3);padding:40px">Cargando...</div>';
+
+  try {
+    const storagePath = doc.storage_path || doc.url;
+    const { data } = await sb.storage.from('documentos').createSignedUrl(storagePath, 60 * 60);
+    const url = data?.signedUrl || '';
+    dlBtn.href = url;
+
+    const ext = (doc.nombre_archivo || '').split('.').pop().toLowerCase();
+    if (['jpg','jpeg','png','gif','webp'].includes(ext)) {
+      content.innerHTML = `<img class="doc-viewer-img" src="${url}" alt="${doc.nombre_archivo}">`;
+    } else if (ext === 'pdf') {
+      content.innerHTML = `<iframe class="doc-viewer-iframe" src="${url}"></iframe>`;
+    } else {
+      content.innerHTML = `<div style="text-align:center;padding:60px 20px;font-family:var(--mono)">
+        <div style="font-size:40px;margin-bottom:16px">📄</div>
+        <div style="color:var(--text);margin-bottom:8px">${doc.nombre_archivo}</div>
+        <div style="color:var(--text3);font-size:11px;margin-bottom:24px">Este tipo de archivo no se puede previsualizar</div>
+        <a class="btn-download" href="${url}" download="${doc.nombre_archivo}" target="_blank">↓ Descargar archivo</a>
+      </div>`;
+    }
+  } catch(e) {
+    content.innerHTML = `<div style="font-family:var(--mono);color:var(--red);padding:40px">Error al cargar: ${e.message}</div>`;
+  }
+}
+
+
+// ══════════════════════════════════════════════════════════
+//  PEDIDOS
+// ══════════════════════════════════════════════════════════
+const pedidoData = {}; // num_pedido -> { nota, docs: {presupuesto, albaran, factura} }
+let currentPedido = null;
+let currentPedidoTipo = null;
+
+
+
+async function savePedidoNota() {
+  const nota = document.getElementById('pedido-nota').value.trim();
+  try {
+    const pd = pedidoData[currentPedido];
+    if (pd?.id) {
+      await sb.from('pedidos').update({ nota }).eq('id', pd.id);
+      pedidoData[currentPedido].nota = nota;
+    } else {
+      const { data: res } = await sb.from('pedidos').insert({ num_pedido: currentPedido, nota }).select().single();
+      if (!pedidoData[currentPedido]) pedidoData[currentPedido] = {};
+      pedidoData[currentPedido].nota = nota;
+      pedidoData[currentPedido].id = res?.id;
+    }
+    toast('Nota guardada', 'success');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+
+
+
+
+
+
+// ══════════════════════════════════════════════════════════
+//  NOTAS
+// ══════════════════════════════════════════════════════════
+
+
+function handleDragOver(e, tipo) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.add('drag-over');
+}
+function handleDragLeave(e, tipo) {
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.remove('drag-over');
+}
+function handleDrop(e, tipo) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const fakeInput = { files: [file] };
+  uploadDoc(fakeInput, tipo);
+}
+
+
+// ══════════════════════════════════════════════════════════
+//  CONFIG: Proveedores & Producciones
+// ══════════════════════════════════════════════════════════
+const configData = { proveedores: [], producciones: [], elementos: [] };
+
+
+function renderConfig() {
+  ['proveedores','producciones','elementos'].forEach(tipo => {
+    const list = document.getElementById('list-' + tipo);
+    const items = configData[tipo];
+    if (!items.length) {
+      list.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text3);padding:8px 10px">Sin elementos</div>';
+      return;
+    }
+    list.innerHTML = items.map((item, i) => `
+      <div class="config-item">
+        <span>${item}</span>
+        <button class="config-item-del" onclick="removeConfigItem('${tipo}',${i})" title="Eliminar">✕</button>
+      </div>`).join('');
+  });
+  updateFormSelects();
+}
+
+async function addConfigItem(tipo) {
+  const inputId = tipo === 'proveedores' ? 'new-proveedor' : tipo === 'producciones' ? 'new-produccion' : 'new-elemento';
+  const input = document.getElementById(inputId);
+  const val = input.value.trim().toUpperCase();
+  if (!val) return;
+  if (configData[tipo].includes(val)) { toast('Ya existe', 'info'); return; }
+  configData[tipo].push(val);
+  configData[tipo].sort();
+  input.value = '';
+  try {
+    const tipoVal = tipo === 'proveedores' ? 'proveedor' : tipo === 'producciones' ? 'produccion' : 'elemento';
+    await sb.from('config').insert({ tipo: tipoVal, nombre: val });
+  } catch(e) { /* table may not exist */ }
+  renderConfig();
+}
+
+async function removeConfigItem(tipo, idx) {
+  const nombre = configData[tipo][idx];
+  configData[tipo].splice(idx, 1);
+  try {
+    const tipoVal2 = tipo === 'proveedores' ? 'proveedor' : tipo === 'producciones' ? 'produccion' : 'elemento';
+    await sb.from('config').delete().eq('tipo', tipoVal2).eq('nombre', nombre);
+  } catch(e) { /* ignore */ }
+  renderConfig();
+}
+
+function updateFormSelects() {
+  populateSelect('f-proveedor', configData.proveedores, '— Sin proveedor —');
+  populateSelect('f-produccion', configData.producciones, '— Sin producción —');
+  populateSelect('f-elemento', configData.elementos, '— Sin elemento —');
+}
+
+function populateSelect(id, items, placeholder) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = `<option value="">${placeholder}</option>` +
+    items.map(v => `<option value="${v}">${v}</option>`).join('');
+  if (current) sel.value = current;
+}
+
+// ══════════════════════════════════════════════════════════
+//  GROUPED VIEW
+// ══════════════════════════════════════════════════════════
+const viewMode = { mantenimiento: 'flat', alquiler: 'flat', compras: 'flat' };
+const groupOpen = {};
+
+function toggleViewMode(tipo) {
+  viewMode[tipo] = viewMode[tipo] === 'flat' ? 'grouped' : 'flat';
+  document.querySelectorAll(`.view-btn[data-tipo="${tipo}"]`).forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === viewMode[tipo]);
+  });
+  renderTable(tipo);
+}
+
+function toggleGroup(key) {
+  groupOpen[key] = !groupOpen[key];
+  const rows = document.querySelectorAll(`.group-rows[data-key="${key}"]`);
+  const toggle = document.querySelector(`.group-toggle[data-key="${key}"]`);
+  rows.forEach(r => r.style.display = groupOpen[key] ? '' : 'none');
+  if (toggle) toggle.classList.toggle('open', groupOpen[key]);
+}
+
+
+// ══════════════════════════════════════════════════════════
+//  DOC VIEWER
+// ══════════════════════════════════════════════════════════
+async function viewDoc(gastoId, tipo) {
+  const d = docs[gastoId];
+  if (!d || !d[tipo]) {
+    // No doc - open edit modal to upload
+    openGastoModal(gastoId, currentTab);
+    return;
+  }
+  await openDocViewer(d[tipo]);
+}
+
+async function viewDocFromGroup(pedidoDocs, tipo) {
+  if (!pedidoDocs[tipo]) { toast('Sin documento ' + tipo, 'info'); return; }
+  await openDocViewer(pedidoDocs[tipo]);
+}
+
+async function openDocViewer(doc) {
+  openModal('docviewer');
+  const content = document.getElementById('docviewer-content');
+  const nameEl = document.getElementById('docviewer-name');
+  const dlBtn = document.getElementById('docviewer-download');
+  nameEl.textContent = doc.nombre_archivo || 'Documento';
+  content.innerHTML = '<div style="font-family:var(--mono);color:var(--text3);padding:40px">Cargando...</div>';
+
+  try {
+    const storagePath = doc.storage_path || doc.url;
+    const { data } = await sb.storage.from('documentos').createSignedUrl(storagePath, 60 * 60);
+    const url = data?.signedUrl || '';
+    dlBtn.href = url;
+
+    const ext = (doc.nombre_archivo || '').split('.').pop().toLowerCase();
+    if (['jpg','jpeg','png','gif','webp'].includes(ext)) {
+      content.innerHTML = `<img class="doc-viewer-img" src="${url}" alt="${doc.nombre_archivo}">`;
+    } else if (ext === 'pdf') {
+      content.innerHTML = `<iframe class="doc-viewer-iframe" src="${url}"></iframe>`;
+    } else {
+      content.innerHTML = `<div style="text-align:center;padding:60px 20px;font-family:var(--mono)">
+        <div style="font-size:40px;margin-bottom:16px">📄</div>
+        <div style="color:var(--text);margin-bottom:8px">${doc.nombre_archivo}</div>
+        <div style="color:var(--text3);font-size:11px;margin-bottom:24px">Este tipo de archivo no se puede previsualizar</div>
+        <a class="btn-download" href="${url}" download="${doc.nombre_archivo}" target="_blank">↓ Descargar archivo</a>
+      </div>`;
+    }
+  } catch(e) {
+    content.innerHTML = `<div style="font-family:var(--mono);color:var(--red);padding:40px">Error al cargar: ${e.message}</div>`;
+  }
+}
+
+
+// ══════════════════════════════════════════════════════════
+//  PEDIDOS
+// ══════════════════════════════════════════════════════════
+const pedidoData = {}; // num_pedido -> { nota, docs: {presupuesto, albaran, factura} }
+let currentPedido = null;
+let currentPedidoTipo = null;
+
+
+
+async function savePedidoNota() {
+  const nota = document.getElementById('pedido-nota').value.trim();
+  try {
+    const pd = pedidoData[currentPedido];
+    if (pd?.id) {
+      await sb.from('pedidos').update({ nota }).eq('id', pd.id);
+      pedidoData[currentPedido].nota = nota;
+    } else {
+      const { data: res } = await sb.from('pedidos').insert({ num_pedido: currentPedido, nota }).select().single();
+      if (!pedidoData[currentPedido]) pedidoData[currentPedido] = {};
+      pedidoData[currentPedido].nota = nota;
+      pedidoData[currentPedido].id = res?.id;
+    }
+    toast('Nota guardada', 'success');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+
+
+
+
+
+
+// ══════════════════════════════════════════════════════════
+//  NOTAS
+// ══════════════════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════════════════
+//  ⚙️  CONFIGURACIÓN — edita estas dos líneas con tus datos
+// ══════════════════════════════════════════════════════════
+const SUPABASE_URL  = 'https://rtivrsmvjardvkbghlin.supabase.co';   // ← cambia esto
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ0aXZyc212amFyZHZrYmdobGluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4ODg4MTQsImV4cCI6MjA5NTQ2NDgxNH0.An3ugYj-jJn2ek4vgRQ2Jnkvx9LKUjMy-WEJiUu_9V8';                        // ← cambia esto
+// ══════════════════════════════════════════════════════════
+
+const IS_CONFIGURED = true;
+
+let sb = null;
+if (IS_CONFIGURED) {
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+}
+
+// ── STATE ────────────────────────────────────────────────
+let currentUser = null;
+let currentTab = 'dashboard';
+let editingId = null;
+let editingTipo = null;
+
+const data = { mantenimiento: [], alquiler: [], compras: [] };
+const docs = {};            // gasto_id -> { presupuesto, albaran, factura }
+const sort = {
+  mantenimiento: { col: 'fecha_envio', dir: -1 },
+  alquiler:      { col: 'fecha_envio', dir: -1 },
+  compras:       { col: 'fecha_envio', dir: -1 },
+};
+const pages = { mantenimiento: 1, alquiler: 1, compras: 1 };
+const PAGE_SIZE = 50;
+
+const MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
+               'JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+
+// ── INIT ─────────────────────────────────────────────────
+(async function init() {
+  if (!IS_CONFIGURED) {
+    showScreen('app');
+    document.getElementById('setup-notice').style.display = 'block';
+    document.getElementById('userEmail').textContent = 'demo@mode';
+    renderDemoState();
+    return;
+  }
+  // Handle recovery token in URL hash
+  if (window.location.hash.includes('type=recovery')) {
+    showScreen('reset');
+    return;
+  }
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    currentUser = session.user;
+    showScreen('app');
+    document.getElementById('userEmail').textContent = currentUser.email;
+    await loadAllData();
+  } else {
+    showScreen('login');
+  }
+  sb.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY') {
+      showScreen('reset');
+      return;
+    }
+    if (event === 'SIGNED_IN' && session) {
+      currentUser = session.user;
+      document.getElementById('userEmail').textContent = currentUser.email;
+      showScreen('app');
+      loadAllData();
+    } else if (event === 'SIGNED_OUT') {
+      currentUser = null;
+      showScreen('login');
+    }
+  });
+})();
+
+function renderDemoState() {
+  ['mantenimiento','alquiler','compras'].forEach(t => {
+    document.getElementById(`badge-${t}`).innerHTML = '<span>0</span> registros';
+    document.getElementById(`tbody-${t}`).innerHTML =
+      `<tr><td colspan="13" style="text-align:center;padding:40px;color:var(--text3);font-family:var(--mono)">
+        Configura Supabase para usar la app · Ver instrucciones arriba
+      </td></tr>`;
+  });
+}
+
+// ── AUTH ─────────────────────────────────────────────────
+async function loginWithPassword() {
+  const email = document.getElementById("login-email").value.trim();
+  const pass = document.getElementById("login-pass").value;
+  if (!email || !pass) return;
+  const btn = document.getElementById("login-pass-btn");
+  const msg = document.getElementById("login-msg");
+  btn.disabled = true;
+  btn.textContent = "Entrando...";
+  try {
+    const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+    if (error) throw error;
+  } catch(e) {
+    msg.className = "login-msg error";
+    msg.textContent = "Error: " + e.message;
+    btn.disabled = false;
+    btn.textContent = "Entrar con contrasena";
+  }
+}
+
+async function doResetPassword() {
+  const pass = document.getElementById("reset-pass").value;
+  const pass2 = document.getElementById("reset-pass2").value;
+  const msg = document.getElementById("reset-msg");
+  const btn = document.getElementById("reset-btn");
+  if (pass.length < 6) { msg.className="login-msg error"; msg.textContent="Minimo 6 caracteres"; return; }
+  if (pass !== pass2) { msg.className="login-msg error"; msg.textContent="Las contrasenas no coinciden"; return; }
+  btn.disabled = true;
+  btn.textContent = "Guardando...";
+  try {
+    const { error } = await sb.auth.updateUser({ password: pass });
+    if (error) throw error;
+    msg.className = "login-msg success";
+    msg.textContent = "Contrasena guardada. Redirigiendo...";
+    setTimeout(() => { showScreen("app"); loadAllData(); }, 1500);
+  } catch(e) {
+    msg.className = "login-msg error";
+    msg.textContent = "Error: " + e.message;
+    btn.disabled = false;
+    btn.textContent = "Guardar contrasena";
+  }
+}
+
+async function sendMagicLink() {
+  const email = document.getElementById('login-email').value.trim();
+  if (!email) return;
+  const btn = document.getElementById('login-btn');
+  const msg = document.getElementById('login-msg');
+  btn.disabled = true;
+  btn.textContent = 'Enviando…';
+  try {
+    const { error } = await sb.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.href }
+    });
+    if (error) throw error;
+    msg.className = 'login-msg success';
+    msg.textContent = '✓ Magic link enviado — revisa tu email';
+  } catch(e) {
+    msg.className = 'login-msg error';
+    msg.textContent = '✗ Error: ' + e.message;
+    btn.disabled = false;
+    btn.textContent = 'Enviar magic link';
+  }
+}
+
+async function logout() {
+  if (sb) await sb.auth.signOut();
+}
+
+// ── SCREENS ──────────────────────────────────────────────
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+}
+
+// ── TABS ─────────────────────────────────────────────────
+function switchTab(name) {
+  currentTab = name;
+  document.querySelectorAll('.nav-tab').forEach((t, i) => {
+    t.classList.toggle('active', t.textContent.toLowerCase().includes(name.replace('dashboard','dashboard').replace('mantenimiento','mant').replace('alquiler','alquil').replace('compras','compra')) || t.getAttribute('onclick').includes("'"+name+"'"));
+  });
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  if (name !== 'dashboard') renderTable(name);
+}
+
+// ── LOAD DATA ────────────────────────────────────────────
+async function loadAllData() {
+  showLoading(true);
+  try {
+    const [mRes, aRes, cRes, dRes] = await Promise.all([
+      sb.from('gastos').select('*').eq('tipo','mantenimiento').order('fecha_envio',{ascending:false}),
+      sb.from('gastos').select('*').eq('tipo','alquiler').order('fecha_envio',{ascending:false}),
+      sb.from('gastos').select('*').eq('tipo','compra').order('fecha_envio',{ascending:false}),
+      sb.from('documentos').select('*'),
+    ]);
+    data.mantenimiento = mRes.data || [];
+    data.alquiler = aRes.data || [];
+    data.compras = cRes.data || [];
+
+    // Index docs by gasto_id
+    (dRes.data || []).forEach(d => {
+      if (!docs[d.gasto_id]) docs[d.gasto_id] = {};
+      docs[d.gasto_id][d.tipo] = d;
+    });
+
+    populateFilters();
+    await loadConfig();
+    await loadPedidos();
+    updateDashboard();
+    if (currentTab !== 'dashboard') renderTable(currentTab);
+  } catch(e) {
+    toast('Error cargando datos: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+// ── POPULATE FILTERS ─────────────────────────────────────
+const filterMap = {
+  mantenimiento: { año:'filt-mant-año', mes:'filt-mant-mes', prod:'filt-mant-prod', prov:'filt-mant-prov', elem:'filt-mant-elem' },
+  alquiler:      { año:'filt-alq-año',  mes:'filt-alq-mes',  prod:'filt-alq-prod',  prov:'filt-alq-prov' },
+  compras:       { año:'filt-comp-año', mes:'filt-comp-mes', prod:'filt-comp-prod', prov:'filt-comp-prov' },
+};
+
+function populateFilters() {
+  ['mantenimiento','alquiler','compras'].forEach(tipo => {
+    const rows = data[tipo];
+    const fm = filterMap[tipo];
+    const uniq = (arr) => [...new Set(arr.filter(Boolean))].sort();
+
+    setOptions(fm.año, uniq(rows.map(r => r.año)));
+    setOptions(fm.mes, uniq(rows.map(r => r.mes)));
+    setOptions(fm.prod, uniq(rows.map(r => r.produccion)));
+    setOptions(fm.prov, uniq(rows.map(r => r.proveedor)));
+    if (fm.elem) setOptions(fm.elem, uniq(rows.map(r => r.elemento)));
+  });
+}
+
+function setOptions(id, values) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  const current = sel.value;
+  const first = sel.options[0];
+  sel.innerHTML = '';
+  sel.appendChild(first);
+  values.forEach(v => {
+    const o = document.createElement('option');
+    o.value = o.textContent = v;
+    sel.appendChild(o);
+  });
+  sel.value = current;
+}
+
+// ── GET FILTERED DATA ────────────────────────────────────
+function getFiltered(tipo) {
+  let rows = data[tipo] || [];
+  const fm = filterMap[tipo];
+
+  const año = document.getElementById(fm.año)?.value;
+  const mes = document.getElementById(fm.mes)?.value;
+  const prod = document.getElementById(fm.prod)?.value;
+  const prov = document.getElementById(fm.prov)?.value;
+  const elem = fm.elem ? document.getElementById(fm.elem)?.value : '';
+  const search = document.getElementById(`filt-${tipo.substring(0,4)}-search`)?.value.toLowerCase() ||
+                 document.getElementById(`filt-comp-search`)?.value.toLowerCase() || '';
+
+  if (año)  rows = rows.filter(r => String(r.año) === año);
+  if (mes)  rows = rows.filter(r => r.mes === mes);
+  if (prod) rows = rows.filter(r => r.produccion === prod);
+  if (prov) rows = rows.filter(r => r.proveedor === prov);
+  if (elem) rows = rows.filter(r => r.elemento === elem);
+  if (search) rows = rows.filter(r =>
+    (r.descripcion||'').toLowerCase().includes(search) ||
+    (r.elemento||'').toLowerCase().includes(search) ||
+    (r.code||'').toLowerCase().includes(search) ||
+    (r.num_pedido||'').toLowerCase().includes(search)
+  );
+
+  // Sort
+  const s = sort[tipo];
+  rows = [...rows].sort((a, b) => {
+    let va = a[s.col], vb = b[s.col];
+    if (va === null || va === undefined) return 1;
+    if (vb === null || vb === undefined) return -1;
+    if (typeof va === 'string') return s.dir * va.localeCompare(vb);
+    return s.dir * (va - vb);
+  });
+  return rows;
+}
+
+// ── RENDER TABLE ─────────────────────────────────────────
+function renderTable(tipo) {
+  const rows = getFiltered(tipo);
+
+  // GROUPED MODE
+  if (viewMode[tipo] === 'grouped') {
+    const badge = document.getElementById('badge-' + tipo);
+    badge.innerHTML = `<span>${rows.length}</span> registros`;
+    const sumCoste = rows.reduce((s,r) => s + (r.coste||0), 0);
+    const sumRefact = rows.reduce((s,r) => s + (r.refact||0), 0);
+    document.getElementById('totals-' + tipo).innerHTML = `
+      <div class="total-card"><div class="total-label">Coste total</div><div class="total-value">${fmt(sumCoste)}</div><div class="total-sub">${rows.length} registros</div></div>
+      <div class="total-card"><div class="total-label">Total refacturado</div><div class="total-value">${fmt(sumRefact)}</div></div>`;
+    const tbody = document.getElementById('tbody-' + tipo);
+    tbody.innerHTML = renderGroupedTable(tipo, rows);
+    document.getElementById('pag-' + tipo).innerHTML = '';
+    return;
+  }
+
+  const page = pages[tipo] || 1;
+  const total = rows.length;
+  const paged = rows.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+
+  const badge = document.getElementById('badge-' + tipo);
+  badge.innerHTML = `<span>${total}</span> registros`;
+
+  // Totals
+  const sumCoste = rows.reduce((s,r) => s + (r.coste||0), 0);
+  const sumRefact = rows.reduce((s,r) => s + (r.refact||0), 0);
+  document.getElementById('totals-' + tipo).innerHTML = `
+    <div class="total-card">
+      <div class="total-label">Coste total</div>
+      <div class="total-value">${fmt(sumCoste)}</div>
+      <div class="total-sub">${total} registros filtrados</div>
+    </div>
+    <div class="total-card">
+      <div class="total-label">Total refacturado</div>
+      <div class="total-value">${fmt(sumRefact)}</div>
+      <div class="total-sub">${rows.filter(r=>r.refact).length} con refacturación</div>
+    </div>
+    <div class="total-card">
+      <div class="total-label">Sin documentos</div>
+      <div class="total-value" style="color:var(--red)">${rows.filter(r=>!docs[r.id]).length}</div>
+      <div class="total-sub">registros sin docs adjuntos</div>
+    </div>`;
+
+  const tbody = document.getElementById('tbody-' + tipo);
+  if (!paged.length) {
+    tbody.innerHTML = `<tr><td colspan="13">
+      <div class="empty-state">
+        <div class="empty-state-icon">🔍</div>
+        <div class="empty-state-text">Sin resultados</div>
+        <div class="empty-state-sub">Prueba con otros filtros</div>
+      </div>
+    </td></tr>`;
+    document.getElementById('pag-' + tipo).innerHTML = '';
+    return;
+  }
+
+  const isMant = tipo === 'mantenimiento';
+  tbody.innerHTML = paged.map(r => {
+    const d = docs[r.id] || {};
+    const hasPres = !!d.presupuesto;
+    const hasAlb = !!d.albaran;
+    const hasFact = !!d.factura;
+    return `<tr>
+      <td class="highlight">${fmtDate(r.fecha_envio)}</td>
+      <td><span class="badge-mes">${(r.mes||'').substring(0,3)}</span></td>
+      ${isMant ? '<td class="highlight">' + (r.code||'') + '</td>' : ''}
+      <td title="${r.elemento||''}">${r.elemento ? '<span class="badge-elem '+(r.elemento==='CAM'?'cam':r.elemento==='AUDIO'?'audio':r.elemento==='LIGHT'?'light':r.elemento==='LENS'?'lens':'other')+'">'+r.elemento+'</span>' : ''}</td>
+      <td>${r.proveedor ? '<span class="badge-prov">'+r.proveedor+'</span>' : ''}</td>
+      <td class="num">${r.coste!=null ? fmt(r.coste) : '—'}</td>
+      <td class="num positive">${r.refact!=null ? fmt(r.refact) : '—'}</td>
+      <td style="font-size:10px;color:var(--text3)">
+        ${r.num_pedido||''}
+        ${r.notas ? '<span class="nota-badge" onclick="event.stopPropagation();showNota(this)" data-id="' + r.id + '" data-scope="linea" style="margin-left:4px">📝</span>' : ''}
+      </td>
+      <td>
+        <div class="doc-status">
+          <span class="doc-pill ${hasPres?'has':'missing'}" title="${hasPres?'Ver presupuesto':'Subir presupuesto'}" onclick="event.stopPropagation();hasPres?viewDoc('${r.id}','presupuesto'):openGastoModal('${r.id}','${tipo}')">PRE</span>
+          <span class="doc-pill ${hasAlb?'has':'missing'}" title="${hasAlb?'Ver albarán':'Subir albarán'}" onclick="event.stopPropagation();hasAlb?viewDoc('${r.id}','albaran'):openGastoModal('${r.id}','${tipo}')">ALB</span>
+          <span class="doc-pill ${hasFact?'has':'missing'}" title="${hasFact?'Ver factura':'Subir factura'}" onclick="event.stopPropagation();hasFact?viewDoc('${r.id}','factura'):openGastoModal('${r.id}','${tipo}')">FAC</span>
+        </div>
+      </td>
+      <td><span class="badge-dingo ${r.dingo?'yes':'no'}">${r.dingo?'✓':'✗'}</span></td>
+      <td>
+        <div class="row-actions">
+          <button class="btn-row" onclick="openGastoModal('${r.id}','${tipo}')">Editar</button>
+          <button class="btn-row danger" onclick="deleteGasto('${r.id}','${tipo}')">✕</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  renderPagination(tipo, total, page);
+}
+
+function renderPagination(tipo, total, page) {
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  if (totalPages <= 1) { document.getElementById('pag-' + tipo).innerHTML = ''; return; }
+  let html = '';
+  html += `<button class="page-btn" onclick="goPage('${tipo}',${page-1})" ${page===1?'disabled':''}>←</button>`;
+  for (let p = Math.max(1,page-2); p <= Math.min(totalPages,page+2); p++) {
+    html += `<button class="page-btn ${p===page?'current':''}" onclick="goPage('${tipo}',${p})">${p}</button>`;
+  }
+  html += `<button class="page-btn" onclick="goPage('${tipo}',${page+1})" ${page===totalPages?'disabled':''}>→</button>`;
+  html += `<span class="page-info">${(page-1)*PAGE_SIZE+1}–${Math.min(page*PAGE_SIZE,total)} de ${total}</span>`;
+  document.getElementById('pag-' + tipo).innerHTML = html;
+}
+
+function goPage(tipo, p) {
+  pages[tipo] = p;
+  renderTable(tipo);
+}
+
+// ── SORT ─────────────────────────────────────────────────
+function sortTable(tipo, col) {
+  if (sort[tipo].col === col) sort[tipo].dir *= -1;
+  else { sort[tipo].col = col; sort[tipo].dir = 1; }
+  renderTable(tipo);
+}
+
+// ── DASHBOARD ────────────────────────────────────────────
+function updateDashboard() {
+  const fmt2 = (n) => n.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  const sumRefact = (arr) => arr.reduce((s,r) => s+(r.refact||0), 0);
+  const sumCoste  = (arr) => arr.reduce((s,r) => s+(r.coste||0), 0);
+
+  document.getElementById('dash-mant-total').textContent = fmt2(sumRefact(data.mantenimiento));
+  document.getElementById('dash-mant-count').textContent = data.mantenimiento.length + ' registros';
+  document.getElementById('dash-alq-total').textContent = fmt2(sumRefact(data.alquiler));
+  document.getElementById('dash-alq-count').textContent = data.alquiler.length + ' registros';
+  document.getElementById('dash-comp-total').textContent = fmt2(sumRefact(data.compras));
+  document.getElementById('dash-comp-count').textContent = data.compras.length + ' registros';
+
+  const allRows = [...data.mantenimiento, ...data.alquiler, ...data.compras];
+  const sinDocs = allRows.filter(r => !docs[r.id]).length;
+  const sinRefact = allRows.filter(r => !r.refact).length;
+  const totalRefact = allRows.reduce((s,r)=>s+(r.refact||0),0);
+
+  document.getElementById('dash-docs-pending').textContent = sinDocs;
+  document.getElementById('dash-sin-refact').textContent = sinRefact;
+  document.getElementById('dash-total-refact').textContent = fmt2(totalRefact);
+
+  // Recent 10
+  const recent = allRows.sort((a,b) => (b.fecha_envio||'').localeCompare(a.fecha_envio||'')).slice(0,10);
+  if (recent.length) {
+    document.getElementById('dash-recent').innerHTML = `
+      <table class="data-table">
+        <thead><tr>
+          <th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Producción</th><th>Proveedor</th><th class="num">Coste</th><th class="num">Refact.</th>
+        </tr></thead>
+        <tbody>${recent.map(r=>'<tr><td class="highlight">' + fmtDate(r.fecha_envio) + '</td>
++'<td><span class="badge-mes">'+(r.tipo?.substring(0,4).toUpperCase()||'')+'</span></td>'+'<td>'+(r.descripcion||'')+'</td>'+'<td>'+(r.produccion||'')+'</td>'+'<td>'+(r.proveedor?'<span class="badge-prov">'+r.proveedor+'</span>':'')+'</td>'+'<td class="num">'+(r.coste!=null?fmt(r.coste):'—')+'</td>'+'<td class="num positive">'+(r.refact!=null?fmt(r.refact):'—')+'</td>'+'</tr>').join('')}</tbody>
+      </table>`;
+  }
+}
+
+// ── MODAL: NEW/EDIT GASTO ────────────────────────────────
+function openNewGasto(tipo) {
+  editingId = null;
+  editingTipo = tipo;
+  document.getElementById('modal-gasto-title').textContent = 'Nuevo gasto';
+  document.getElementById('modal-gasto-sub').textContent = tipo.toUpperCase();
+  clearForm();
+  document.getElementById('docs-section').style.display = 'none';
+  openModal('gasto');
+}
+
+async function openGastoModal(id, tipo) {
+  editingId = id;
+  editingTipo = tipo;
+  const row = data[tipo]?.find(r => r.id === id);
+  if (!row) return;
+  document.getElementById('modal-gasto-title').textContent = 'Editar gasto';
+  document.getElementById('modal-gasto-sub').textContent = `${tipo.toUpperCase()} · ${row.num_pedido||''}`;
+  fillForm(row);
+  document.getElementById('docs-section').style.display = 'block';
+  loadDocNames(id);
+  openModal('gasto');
+}
+
+async function loadDocNames(gastoId) {
+  const d = docs[gastoId] || {};
+  for (const t of ['presupuesto','albaran','factura']) {
+    const el = document.getElementById('doc-' + t + '-name');
+    if (d[t]) {
+      // Generate fresh signed URL from storage_path
+      const storagePath = d[t].storage_path || d[t].url;
+      try {
+        const { data } = await sb.storage.from('documentos').createSignedUrl(storagePath, 60 * 60 * 24);
+        const url = data?.signedUrl || '';
+        el.innerHTML = `<a href="${url}" target="_blank" rel="noopener">📄 ${d[t].nombre_archivo}</a>`;
+      } catch(e) {
+        el.innerHTML = `<span style="color:var(--text3)">📄 ${d[t].nombre_archivo}</span>`;
+      }
+    } else {
+      el.textContent = '—';
+    }
+  }
+}
+
+async function uploadDoc(input, tipo) {
+  if (!input.files[0] || !editingId) return;
+  const file = input.files[0];
+  showLoading(true);
+  try {
+    const path = `${editingId}/${tipo}/${Date.now()}_${file.name}`;
+    const { error: upErr } = await sb.storage.from('documentos').upload(path, file);
+    if (upErr) throw upErr;
+    // Use signed URL (bucket is private)
+    const { data: signedData, error: signErr } = await sb.storage.from('documentos').createSignedUrl(path, 60 * 60 * 24 * 7); // 7 days
+    const signedUrl = signedData?.signedUrl || '';
+
+    // Upsert document record - store path, generate signed URL on demand
+    const existing = docs[editingId]?.[tipo];
+    if (existing) {
+      await sb.from('documentos').update({ nombre_archivo: file.name, storage_path: path, url: path }).eq('id', existing.id);
+    } else {
+      await sb.from('documentos').insert({ gasto_id: editingId, tipo, nombre_archivo: file.name, storage_path: path, url: path });
+    }
+    if (!docs[editingId]) docs[editingId] = {};
+    docs[editingId][tipo] = { nombre_archivo: file.name, storage_path: path, url: signedUrl };
+    loadDocNames(editingId);
+    toast(`${tipo.charAt(0).toUpperCase()+tipo.slice(1)} subido`, 'success');
+    renderTable(editingTipo);
+  } catch(e) {
+    toast('Error subiendo archivo: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+function clearForm() {
+  ['fecha-envio','fecha-recepcion','mes','code','elemento','descripcion','averia',
+   'produccion','proveedor','coste','refact','num-pedido','albaran','factura','notas'].forEach(f => {
+    const el = document.getElementById('f-' + f);
+    if (el) el.value = '';
+  });
+  document.getElementById('f-dingo').value = 'true';
+}
+
+function fillForm(r) {
+  document.getElementById('f-fecha-envio').value = r.fecha_envio || '';
+  document.getElementById('f-fecha-recepcion').value = r.fecha_recepcion || '';
+  document.getElementById('f-mes').value = r.mes || '';
+  document.getElementById('f-code').value = r.code || '';
+  setTimeout(() => { document.getElementById('f-elemento').value = r.elemento || ''; }, 50);
+  document.getElementById('f-descripcion').value = r.descripcion || '';
+  document.getElementById('f-averia').value = r.averia || '';
+  updateFormSelects();
+  setTimeout(() => { document.getElementById('f-produccion').value = r.produccion || ''; }, 50);
+  setTimeout(() => { document.getElementById('f-proveedor').value = r.proveedor || ''; }, 50);
+  document.getElementById('f-coste').value = r.coste != null ? r.coste : '';
+  document.getElementById('f-refact').value = r.refact != null ? r.refact : '';
+  document.getElementById('f-num-pedido').value = r.num_pedido || '';
+  document.getElementById('f-albaran').value = r.albaran_num || '';
+  document.getElementById('f-factura').value = r.factura_num || '';
+  document.getElementById('f-notas').value = r.notas || '';
+  document.getElementById('f-dingo').value = r.dingo ? 'true' : 'false';
+}
+
+async function saveGasto() {
+  const btn = document.getElementById('btn-save-gasto');
+  btn.disabled = true;
+  try {
+    const payload = {
+      tipo: editingTipo === 'compras' ? 'compra' : editingTipo,
+      fecha_envio: document.getElementById('f-fecha-envio').value || null,
+      fecha_recepcion: document.getElementById('f-fecha-recepcion').value || null,
+      mes: document.getElementById('f-mes').value || null,
+      code: document.getElementById('f-code').value || null,
+      elemento: document.getElementById('f-elemento').value || null,
+      descripcion: document.getElementById('f-descripcion').value || null,
+      averia: document.getElementById('f-averia').value || null,
+      produccion: document.getElementById('f-produccion').value || null,
+      proveedor: document.getElementById('f-proveedor').value || null,
+      coste: parseFloat(document.getElementById('f-coste').value) || null,
+      refact: parseFloat(document.getElementById('f-refact').value) || null,
+      num_pedido: document.getElementById('f-num-pedido').value || null,
+      albaran_num: document.getElementById('f-albaran').value || null,
+      factura_num: document.getElementById('f-factura').value || null,
+      notas: document.getElementById('f-notas').value || null,
+      dingo: document.getElementById('f-dingo').value === 'true',
+      created_by: currentUser?.id,
+    };
+    let res;
+    if (editingId) {
+      res = await sb.from('gastos').update(payload).eq('id', editingId).select().single();
+      if (res.error) throw res.error;
+      const idx = data[editingTipo].findIndex(r => r.id === editingId);
+      if (idx >= 0) data[editingTipo][idx] = res.data;
+    } else {
+      res = await sb.from('gastos').insert(payload).select().single();
+      if (res.error) throw res.error;
+      data[editingTipo].unshift(res.data);
+    }
+    populateFilters();
+    renderTable(editingTipo);
+    updateDashboard();
+    closeModal('gasto');
+    toast('Guardado correctamente', 'success');
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function deleteGasto(id, tipo) {
+  if (!confirm('¿Eliminar este registro?')) return;
+  try {
+    const { error } = await sb.from('gastos').delete().eq('id', id);
+    if (error) throw error;
+    data[tipo] = data[tipo].filter(r => r.id !== id);
+    delete docs[id];
+    renderTable(tipo);
+    updateDashboard();
+    toast('Eliminado', 'info');
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+// ── IMPORT ───────────────────────────────────────────────
+function openImport() { openModal('import'); }
+
+function handleImportDrop(e) {
+  e.preventDefault();
+  document.getElementById('import-zone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) processImportFile(file);
+}
+function handleImportFile(input) {
+  if (input.files[0]) processImportFile(input.files[0]);
+}
+
+async function processImportFile(file) {
+  const status = document.getElementById('import-status');
+  status.textContent = 'Leyendo fichero…';
+  try {
+    const ab = await file.arrayBuffer();
+    const wb = XLSX.read(ab);
+    const sheetMap = {
+      'MATENIMIENTO': 'mantenimiento',
+      'MANTENIMIENTO': 'mantenimiento',
+      'ALQUILER': 'alquiler',
+      'COMPRAS': 'compras',
+    };
+    let totalImported = 0;
+    for (const [sheetName, tipo] of Object.entries(sheetMap)) {
+      const ws = wb.Sheets[sheetName];
+      if (!ws) continue;
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: null });
+      status.textContent = `Importando ${sheetName}… (${rows.length} filas)`;
+      const payload = rows.filter(r => r['DESCRIPCIÓN'] || r['SESCRIPCIÓN']).map(r => ({
+        tipo: tipo === 'compras' ? 'compra' : tipo,
+        fecha_envio: excelDateToISO(r['FECHA ENVÍO']),
+        fecha_recepcion: excelDateToISO(r['FECHA RECEPCIÓN']),
+        año: r['AÑO'] ? parseInt(r['AÑO']) : null,
+        mes: r['MES'] || null,
+        code: r['CODE'] != null ? String(r['CODE']) : null,
+        elemento: r['ELEMENTO'] || null,
+        descripcion: r['DESCRIPCIÓN'] || r['SESCRIPCIÓN'] || null,
+        averia: r['AVERÍA'] || null,
+        produccion: r['PRODUCCIÓN'] || null,
+        proveedor: r['PROVEEDOR'] || null,
+        coste: parseNum(r['COSTE']),
+        refact: parseNum(r['REFACT.']),
+        albaran_num: r['ALBARÁN'] ? String(r['ALBARÁN']) : null,
+        factura_num: r['FACTURA'] ? String(r['FACTURA']) : null,
+        num_pedido: r['NÚM PEDIDO'] ? String(r['NÚM PEDIDO']) : null,
+        dingo: r['DINGO'] === 'DINGO',
+        created_by: currentUser?.id,
+      }));
+      if (payload.length) {
+        const { error, count } = await sb.from('gastos').upsert(payload, { onConflict: 'tipo,num_pedido,code,descripcion', ignoreDuplicates: true });
+        if (error) throw error;
+        totalImported += payload.length;
+      }
+    }
+    status.style.color = 'var(--green)';
+    status.textContent = `✓ Importación completada. ${totalImported} registros procesados.`;
+    await loadAllData();
+    if (currentTab !== 'dashboard') renderTable(currentTab);
+  } catch(e) {
+    status.style.color = 'var(--red)';
+    status.textContent = '✗ Error: ' + e.message;
+  }
+}
+
+function excelDateToISO(v) {
+  if (!v) return null;
+  if (typeof v === 'number') {
+    const date = new Date(Math.round((v - 25569) * 86400 * 1000));
+    return date.toISOString().split('T')[0];
+  }
+  if (typeof v === 'string' && v.match(/\d{4}/)) return v;
+  return null;
+}
+
+function parseNum(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = parseFloat(String(v).replace(',','.'));
+  return isNaN(n) ? null : n;
+}
+
+// ── MODALS ───────────────────────────────────────────────
+function openModal(name) {
+  document.getElementById('modal-' + name).classList.add('open');
+}
+function closeModal(name) {
+  document.getElementById('modal-' + name).classList.remove('open');
+}
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) closeModal(el.id.replace('modal-','')); });
+});
+
+// ── TOAST ────────────────────────────────────────────────
+function toast(msg, type='info') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(() => {
+    el.style.animation = 'toast-out .3s ease forwards';
+    setTimeout(() => el.remove(), 300);
+  }, 3500);
+}
+
+// ── LOADING ──────────────────────────────────────────────
+function showLoading(v) {
+  document.getElementById('loading').classList.toggle('open', v);
+}
+
+// ── FORMAT UTILS ─────────────────────────────────────────
+function fmt(n) {
+  if (n == null) return '—';
+  return n.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+}
+function fmtDate(d) {
+  if (!d) return '—';
+  const p = d.split('-');
+  if (p.length === 3) return `${p[2]}/${p[1]}/${p[0].slice(2)}`;
+  return d;
+}
+
+// ── KEYBOARD ─────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+});
+
+
+// ── DINGO GROUP TOGGLE ───────────────────────────────────
+async function toggleDingoGroup(numPedido, tipo, currentState) {
+  // currentState: 'all' -> set all false, otherwise set all true
+  const newVal = currentState !== 'all';
+  const rows = data[tipo].filter(r => r.num_pedido === numPedido);
+  showLoading(true);
+  try {
+    const ids = rows.map(r => r.id);
+    const { error } = await sb.from('gastos').update({ dingo: newVal }).in('id', ids);
+    if (error) throw error;
+    rows.forEach(r => r.dingo = newVal);
+    renderTable(tipo);
+    toast(newVal ? 'DINGO marcado para todas las líneas' : 'DINGO desmarcado para todas las líneas', 'success');
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  } finally { showLoading(false); }
+}
+
+
+
+async function setDingoForPedido(val) {
+  if (!currentPedido || !currentPedidoTipo) return;
+  await toggleDingoGroup(currentPedido, currentPedidoTipo, val ? 'none' : 'all');
+  // Refresh lines in modal
+  const rows = data[currentPedidoTipo].filter(r => r.num_pedido === currentPedido);
+  const lineasEl = document.getElementById('pedido-lineas');
+  if (lineasEl) {
+    lineasEl.innerHTML = rows.map(r => {
+      const rd = docs[r.id] || {};
+      const hasPres = !!rd.presupuesto, hasAlb = !!rd.albaran, hasFact = !!rd.factura;
+      const hasNota = !!(r.notas && r.notas.trim());
+      return `<div class="pedido-linea">
+        <div class="pedido-linea-info">
+          <div class="pedido-linea-desc">${r.descripcion || r.elemento || '—'}</div>
+          <div class="pedido-linea-meta">${r.produccion||''} · ${r.elemento||''} · ${fmt(r.coste)} · refact. ${r.refact!=null?fmt(r.refact):'—'}</div>
+        </div>
+        <div class="pedido-linea-actions">
+          <span class="badge-dingo ${r.dingo?'yes':'no'}">${r.dingo?'✓':'✗'}</span>
+          ${hasNota ? '<span class="nota-badge" onclick="showNota(this)" data-id="'+r.id+'" data-scope="linea">📝 Nota</span>' : ''}
+          <span class="doc-pill ${hasPres?'has':'missing'}" onclick="${hasPres?'viewDoc(\'${r.id}\',\'presupuesto\')':'openGastoModal(\'${r.id}\',\'${currentPedidoTipo}\')'}">PRE</span>
+          <span class="doc-pill ${hasAlb?'has':'missing'}" onclick="${hasAlb?'viewDoc(\'${r.id}\',\'albaran\')':'openGastoModal(\'${r.id}\',\'${currentPedidoTipo}\')'}">ALB</span>
+          <span class="doc-pill ${hasFact?'has':'missing'}" onclick="${hasFact?'viewDoc(\'${r.id}\',\'factura\')':'openGastoModal(\'${r.id}\',\'${currentPedidoTipo}\')'}">FAC</span>
+          <button class="btn-row" onclick="openGastoModal('${r.id}','${currentPedidoTipo}')">Editar</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+}
+
+function renderDingoGroupBadge(rows, pedido, tipo) {
+  const gState = getDingoGroupState(rows);
+  const label = gState==='all' ? '✓ Dingo' : gState==='partial' ? 'Parcial' : '✗ Dingo';
+  const cls = gState==='all' ? 'yes' : gState==='partial' ? 'partial' : 'no';
+  return `<span class="badge-dingo ${cls}" style="cursor:pointer" onclick="event.stopPropagation();toggleDingoGroup('${pedido}','${tipo}','${gState}')" title="Clic para marcar/desmarcar todas las líneas">${label}</span>`;
+}
+
+function getDingoGroupState(rows) {
+  const total = rows.length;
+  const checked = rows.filter(r => r.dingo).length;
+  if (checked === 0) return 'none';
+  if (checked === total) return 'all';
+  return 'partial';
+}
+
+// ── DRAG AND DROP DOCS ───────────────────────────────────
+function handleDragOver(e, tipo) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.add('drag-over');
+}
+function handleDragLeave(e, tipo) {
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.remove('drag-over');
+}
+function handleDrop(e, tipo) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const fakeInput = { files: [file] };
+  uploadDoc(fakeInput, tipo);
+}
+
+
+// ══════════════════════════════════════════════════════════
+//  CONFIG: Proveedores & Producciones
+// ══════════════════════════════════════════════════════════
+const configData = { proveedores: [], producciones: [], elementos: [] };
+
+async function loadConfig() {
+  try {
+    const { data } = await sb.from('config').select('*');
+    if (data) {
+      configData.proveedores = data.filter(r => r.tipo === 'proveedor').map(r => r.nombre).sort();
+      configData.producciones = data.filter(r => r.tipo === 'produccion').map(r => r.nombre).sort();
+      configData.elementos = data.filter(r => r.tipo === 'elemento').map(r => r.nombre).sort();
+    }
+  } catch(e) {
+    const allRows = [...data.mantenimiento, ...data.alquiler, ...data.compras];
+    configData.proveedores = [...new Set(allRows.map(r => r.proveedor).filter(Boolean))].sort();
+    configData.producciones = [...new Set(allRows.map(r => r.produccion).filter(Boolean))].sort();
+    configData.elementos = [...new Set(allRows.map(r => r.elemento).filter(Boolean))].sort();
+  }
+  renderConfig();
+  updateFormSelects();
+}
+
+function renderConfig() {
+  ['proveedores','producciones','elementos'].forEach(tipo => {
+    const list = document.getElementById('list-' + tipo);
+    const items = configData[tipo];
+    if (!items.length) {
+      list.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text3);padding:8px 10px">Sin elementos</div>';
+      return;
+    }
+    list.innerHTML = items.map((item, i) => `
+      <div class="config-item">
+        <span>${item}</span>
+        <button class="config-item-del" onclick="removeConfigItem('${tipo}',${i})" title="Eliminar">✕</button>
+      </div>`).join('');
+  });
+  updateFormSelects();
+}
+
+async function addConfigItem(tipo) {
+  const inputId = tipo === 'proveedores' ? 'new-proveedor' : tipo === 'producciones' ? 'new-produccion' : 'new-elemento';
+  const input = document.getElementById(inputId);
+  const val = input.value.trim().toUpperCase();
+  if (!val) return;
+  if (configData[tipo].includes(val)) { toast('Ya existe', 'info'); return; }
+  configData[tipo].push(val);
+  configData[tipo].sort();
+  input.value = '';
+  try {
+    const tipoVal = tipo === 'proveedores' ? 'proveedor' : tipo === 'producciones' ? 'produccion' : 'elemento';
+    await sb.from('config').insert({ tipo: tipoVal, nombre: val });
+  } catch(e) { /* table may not exist */ }
+  renderConfig();
+}
+
+async function removeConfigItem(tipo, idx) {
+  const nombre = configData[tipo][idx];
+  configData[tipo].splice(idx, 1);
+  try {
+    const tipoVal2 = tipo === 'proveedores' ? 'proveedor' : tipo === 'producciones' ? 'produccion' : 'elemento';
+    await sb.from('config').delete().eq('tipo', tipoVal2).eq('nombre', nombre);
+  } catch(e) { /* ignore */ }
+  renderConfig();
+}
+
+function updateFormSelects() {
+  populateSelect('f-proveedor', configData.proveedores, '— Sin proveedor —');
+  populateSelect('f-produccion', configData.producciones, '— Sin producción —');
+  populateSelect('f-elemento', configData.elementos, '— Sin elemento —');
+}
+
+function populateSelect(id, items, placeholder) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = `<option value="">${placeholder}</option>` +
+    items.map(v => `<option value="${v}">${v}</option>`).join('');
+  if (current) sel.value = current;
+}
+
+// ══════════════════════════════════════════════════════════
+//  GROUPED VIEW
+// ══════════════════════════════════════════════════════════
+const viewMode = { mantenimiento: 'flat', alquiler: 'flat', compras: 'flat' };
+const groupOpen = {};
+
+function toggleViewMode(tipo) {
+  viewMode[tipo] = viewMode[tipo] === 'flat' ? 'grouped' : 'flat';
+  document.querySelectorAll(`.view-btn[data-tipo="${tipo}"]`).forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === viewMode[tipo]);
+  });
+  renderTable(tipo);
+}
+
+function toggleGroup(key) {
+  groupOpen[key] = !groupOpen[key];
+  const rows = document.querySelectorAll(`.group-rows[data-key="${key}"]`);
+  const toggle = document.querySelector(`.group-toggle[data-key="${key}"]`);
+  rows.forEach(r => r.style.display = groupOpen[key] ? '' : 'none');
+  if (toggle) toggle.classList.toggle('open', groupOpen[key]);
+}
+
+
+// ══════════════════════════════════════════════════════════
+//  DOC VIEWER
+// ══════════════════════════════════════════════════════════
+async function viewDoc(gastoId, tipo) {
+  const d = docs[gastoId];
+  if (!d || !d[tipo]) {
+    // No doc - open edit modal to upload
+    openGastoModal(gastoId, currentTab);
+    return;
+  }
+  await openDocViewer(d[tipo]);
+}
+
+async function viewDocFromGroup(pedidoDocs, tipo) {
+  if (!pedidoDocs[tipo]) { toast('Sin documento ' + tipo, 'info'); return; }
+  await openDocViewer(pedidoDocs[tipo]);
+}
+
+async function openDocViewer(doc) {
+  openModal('docviewer');
+  const content = document.getElementById('docviewer-content');
+  const nameEl = document.getElementById('docviewer-name');
+  const dlBtn = document.getElementById('docviewer-download');
+  nameEl.textContent = doc.nombre_archivo || 'Documento';
+  content.innerHTML = '<div style="font-family:var(--mono);color:var(--text3);padding:40px">Cargando...</div>';
+
+  try {
+    const storagePath = doc.storage_path || doc.url;
+    const { data } = await sb.storage.from('documentos').createSignedUrl(storagePath, 60 * 60);
+    const url = data?.signedUrl || '';
+    dlBtn.href = url;
+
+    const ext = (doc.nombre_archivo || '').split('.').pop().toLowerCase();
+    if (['jpg','jpeg','png','gif','webp'].includes(ext)) {
+      content.innerHTML = `<img class="doc-viewer-img" src="${url}" alt="${doc.nombre_archivo}">`;
+    } else if (ext === 'pdf') {
+      content.innerHTML = `<iframe class="doc-viewer-iframe" src="${url}"></iframe>`;
+    } else {
+      content.innerHTML = `<div style="text-align:center;padding:60px 20px;font-family:var(--mono)">
+        <div style="font-size:40px;margin-bottom:16px">📄</div>
+        <div style="color:var(--text);margin-bottom:8px">${doc.nombre_archivo}</div>
+        <div style="color:var(--text3);font-size:11px;margin-bottom:24px">Este tipo de archivo no se puede previsualizar</div>
+        <a class="btn-download" href="${url}" download="${doc.nombre_archivo}" target="_blank">↓ Descargar archivo</a>
+      </div>`;
+    }
+  } catch(e) {
+    content.innerHTML = `<div style="font-family:var(--mono);color:var(--red);padding:40px">Error al cargar: ${e.message}</div>`;
+  }
+}
+
+
+// ══════════════════════════════════════════════════════════
+//  PEDIDOS
+// ══════════════════════════════════════════════════════════
+const pedidoData = {}; // num_pedido -> { nota, docs: {presupuesto, albaran, factura} }
+let currentPedido = null;
+let currentPedidoTipo = null;
+
+async function loadPedidos() {
+  try {
+    const { data } = await sb.from('pedidos').select('*');
+    if (data) {
+      data.forEach(p => {
+        pedidoData[p.num_pedido] = { nota: p.nota, id: p.id };
+      });
+    }
+    const { data: pdocs } = await sb.from('pedido_docs').select('*');
+    if (pdocs) {
+      pdocs.forEach(d => {
+        if (!pedidoData[d.num_pedido]) pedidoData[d.num_pedido] = {};
+        if (!pedidoData[d.num_pedido].docs) pedidoData[d.num_pedido].docs = {};
+        pedidoData[d.num_pedido].docs[d.tipo] = d;
+      });
+    }
+  } catch(e) { /* tables may not exist yet */ }
+}
+
+async function openPedidoModal(numPedido, tipo) {
+  currentPedido = numPedido;
+  currentPedidoTipo = tipo;
+  const rows = data[tipo].filter(r => r.num_pedido === numPedido);
+  const pd = pedidoData[numPedido] || {};
+
+  document.getElementById('pedido-modal-title').textContent = 'Pedido ' + numPedido;
+  const prov = rows[0]?.proveedor || '';
+  document.getElementById('pedido-modal-sub').textContent = `${prov} · ${rows.length} líneas`;
+  document.getElementById('pedido-nota').value = pd.nota || '';
+
+  // Load doc names
+  ['presupuesto','albaran','factura'].forEach(t => {
+    const el = document.getElementById('pedido-doc-' + t + '-name');
+    const d = pd.docs?.[t];
+    if (d) {
+      el.innerHTML = `<a href="#" onclick="event.preventDefault();openDocViewerFromPath('${d.storage_path}','${d.nombre_archivo}')">📄 ${d.nombre_archivo}</a>`;
+    } else {
+      el.textContent = '—';
+    }
+  });
+
+  // Render lines
+  const lineasEl = document.getElementById('pedido-lineas');
+  lineasEl.innerHTML = rows.map(r => {
+    const rd = docs[r.id] || {};
+    const hasPres = !!rd.presupuesto, hasAlb = !!rd.albaran, hasFact = !!rd.factura;
+    const hasNota = !!(r.notas && r.notas.trim());
+    return `<div class="pedido-linea">
+      <div class="pedido-linea-info">
+        <div class="pedido-linea-desc">${r.descripcion || r.elemento || '—'}</div>
+        <div class="pedido-linea-meta">${r.produccion||''} · ${r.elemento||''} · ${fmt(r.coste)} · refact. ${r.refact!=null?fmt(r.refact):'—'}</div>
+      </div>
+      <div class="pedido-linea-actions">
+        ${hasNota ? '<span class="nota-badge" onclick="showNota(this)" data-id="'+r.id+'" data-scope="linea">📝 Nota</span>' : ''}
+        <span class="doc-pill ${hasPres?'has':'missing'}" onclick="${hasPres?'viewDoc(\'${r.id}\',\'presupuesto\')':'openGastoModal(\'${r.id}\',\'${tipo}\')'}">PRE</span>
+        <span class="doc-pill ${hasAlb?'has':'missing'}" onclick="${hasAlb?'viewDoc(\'${r.id}\',\'albaran\')':'openGastoModal(\'${r.id}\',\'${tipo}\')'}">ALB</span>
+        <span class="doc-pill ${hasFact?'has':'missing'}" onclick="${hasFact?'viewDoc(\'${r.id}\',\'factura\')':'openGastoModal(\'${r.id}\',\'${tipo}\')'}">FAC</span>
+        <button class="btn-row" onclick="openGastoModal('${r.id}','${tipo}')">Editar</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  openModal('pedido');
+}
+
+async function savePedidoNota() {
+  const nota = document.getElementById('pedido-nota').value.trim();
+  try {
+    const pd = pedidoData[currentPedido];
+    if (pd?.id) {
+      await sb.from('pedidos').update({ nota }).eq('id', pd.id);
+      pedidoData[currentPedido].nota = nota;
+    } else {
+      const { data: res } = await sb.from('pedidos').insert({ num_pedido: currentPedido, nota }).select().single();
+      if (!pedidoData[currentPedido]) pedidoData[currentPedido] = {};
+      pedidoData[currentPedido].nota = nota;
+      pedidoData[currentPedido].id = res?.id;
+    }
+    toast('Nota guardada', 'success');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function uploadPedidoDoc(input, tipo) {
+  if (!input.files[0] || !currentPedido) return;
+  const file = input.files[0];
+  showLoading(true);
+  try {
+    const path = `pedidos/${currentPedido}/${tipo}/${Date.now()}_${file.name}`;
+    const { error: upErr } = await sb.storage.from('documentos').upload(path, file, { upsert: true });
+    if (upErr) throw upErr;
+
+    const existing = pedidoData[currentPedido]?.docs?.[tipo];
+    if (existing) {
+      await sb.from('pedido_docs').update({ nombre_archivo: file.name, storage_path: path }).eq('id', existing.id);
+    } else {
+      await sb.from('pedido_docs').insert({ num_pedido: currentPedido, tipo, nombre_archivo: file.name, storage_path: path });
+    }
+    if (!pedidoData[currentPedido]) pedidoData[currentPedido] = {};
+    if (!pedidoData[currentPedido].docs) pedidoData[currentPedido].docs = {};
+    pedidoData[currentPedido].docs[tipo] = { nombre_archivo: file.name, storage_path: path };
+
+    const el = document.getElementById('pedido-doc-' + tipo + '-name');
+    el.innerHTML = `<a href="#" onclick="event.preventDefault();openDocViewerFromPath('${path}','${file.name}')">📄 ${file.name}</a>`;
+    toast(tipo + ' subido', 'success');
+    renderTable(currentPedidoTipo);
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  } finally { showLoading(false); }
+}
+
+function handleDragOver2(e, tipo) {
+  e.preventDefault(); e.stopPropagation();
+  document.getElementById('pedido-drop-' + tipo).classList.add('drag-over');
+}
+function handleDragLeave2(e, tipo) {
+  e.stopPropagation();
+  document.getElementById('pedido-drop-' + tipo).classList.remove('drag-over');
+}
+function handleDrop2(e, tipo) {
+  e.preventDefault(); e.stopPropagation();
+  document.getElementById('pedido-drop-' + tipo).classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  uploadPedidoDoc({ files: [file] }, tipo);
+}
+
+async function openDocViewerFromPath(storagePath, nombre) {
+  openModal('docviewer');
+  const content = document.getElementById('docviewer-content');
+  document.getElementById('docviewer-name').textContent = nombre;
+  content.innerHTML = '<div style="font-family:var(--mono);color:var(--text3);padding:40px">Cargando...</div>';
+  try {
+    const { data } = await sb.storage.from('documentos').createSignedUrl(storagePath, 3600);
+    const url = data?.signedUrl || '';
+    document.getElementById('docviewer-download').href = url;
+    const ext = nombre.split('.').pop().toLowerCase();
+    if (['jpg','jpeg','png','gif','webp'].includes(ext)) {
+      content.innerHTML = `<img class="doc-viewer-img" src="${url}" alt="${nombre}">`;
+    } else if (ext === 'pdf') {
+      content.innerHTML = `<iframe class="doc-viewer-iframe" src="${url}"></iframe>`;
+    } else {
+      content.innerHTML = `<div style="text-align:center;padding:60px 20px;font-family:var(--mono)">
+        <div style="font-size:40px;margin-bottom:16px">📄</div>
+        <div style="color:var(--text);margin-bottom:8px">${nombre}</div>
+        <div style="color:var(--text3);font-size:11px;margin-bottom:24px">Este tipo de archivo no se puede previsualizar</div>
+        <a class="btn-download" href="${url}" download="${nombre}" target="_blank">↓ Descargar archivo</a>
+      </div>`;
+    }
+  } catch(e) {
+    content.innerHTML = `<div style="font-family:var(--mono);color:var(--red);padding:40px">Error: ${e.message}</div>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  NOTAS
+// ══════════════════════════════════════════════════════════
+function showNota(elOrId, scope) {
+  let id, sc;
+  if (typeof elOrId === 'string') { id = elOrId; sc = scope; }
+  else { id = elOrId.dataset.id; sc = elOrId.dataset.scope; }
+  let texto = '', titulo = 'Nota';
+  if (sc === 'linea') {
+    const row = [...data.mantenimiento,...data.alquiler,...data.compras].find(r => r.id === id);
+    texto = row?.notas || '';
+    titulo = 'Nota · ' + (row?.descripcion || row?.elemento || '');
+  }
+  document.getElementById('nota-modal-title').textContent = titulo;
+  document.getElementById('nota-modal-content').textContent = texto;
+  openModal('nota');
+}
+
+function showNotaPedido(el) {
+  const pedido = el.dataset.pedido;
+  const texto = pedidoData[pedido]?.nota || '';
+  document.getElementById('nota-modal-title').textContent = 'Nota · Pedido ' + pedido;
+  document.getElementById('nota-modal-content').textContent = texto;
+  openModal('nota');
+}
+
+</script>
+
+<!-- ══════════════════════════════════
+     MODAL: DOC VIEWER
+══════════════════════════════════ -->
+<div class="modal-overlay" id="modal-docviewer">
+  <div class="modal" style="max-width:860px">
+    <button class="modal-close" onclick="closeModal('docviewer')">✕</button>
+    <div class="doc-viewer-toolbar">
+      <div class="doc-viewer-name" id="docviewer-name">—</div>
+      <a class="btn-download" id="docviewer-download" href="#" target="_blank" rel="noopener">↓ Descargar</a>
+    </div>
+    <div class="doc-viewer-content" id="docviewer-content">
+      <div style="font-family:var(--mono);color:var(--text3)">Cargando...</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════
+     MODAL: PEDIDO
+══════════════════════════════════ -->
+<div class="modal-overlay" id="modal-pedido">
+  <div class="modal" style="max-width:860px">
+    <button class="modal-close" onclick="closeModal('pedido')">✕</button>
+    <div class="modal-title" id="pedido-modal-title">Pedido</div>
+    <div class="modal-sub" id="pedido-modal-sub">—</div>
+
+    <!-- Nota de pedido -->
+    <div class="form-group" style="margin-bottom:20px">
+      <label class="form-label">Nota del pedido</label>
+      <textarea class="form-textarea" id="pedido-nota" placeholder="Nota general del pedido..." rows="3"></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:10px">
+        <div style="display:flex;gap:8px">
+          <button class="btn-submit" style="background:var(--green);padding:8px 18px" onclick="setDingoForPedido(true)">✓ Marcar DINGO todas</button>
+          <button class="btn-secondary" onclick="setDingoForPedido(false)">✗ Desmarcar todas</button>
+        </div>
+        <button class="btn-submit" onclick="savePedidoNota()">Guardar nota</button>
+      </div>
+    </div>
+
+    <!-- Documentos del pedido -->
+    <div class="docs-section">
+      <div class="docs-section-title">Documentos del pedido (compartidos por todas las líneas)</div>
+      <div id="pedido-docs-list">
+        <div class="doc-type-row" id="pedido-drop-presupuesto"
+             ondragover="handleDragOver2(event,'presupuesto')"
+             ondragleave="handleDragLeave2(event,'presupuesto')"
+             ondrop="handleDrop2(event,'presupuesto')">
+          <span class="doc-type-name">Presupuesto</span>
+          <span class="doc-drop-hint">arrastra aqui</span>
+          <span class="doc-file-name" id="pedido-doc-presupuesto-name">—</span>
+          <label class="doc-upload-label">↑ Subir
+            <input class="doc-upload-input" type="file" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls" onchange="uploadPedidoDoc(this,'presupuesto')">
+          </label>
+        </div>
+        <div class="doc-type-row" id="pedido-drop-albaran"
+             ondragover="handleDragOver2(event,'albaran')"
+             ondragleave="handleDragLeave2(event,'albaran')"
+             ondrop="handleDrop2(event,'albaran')">
+          <span class="doc-type-name">Albarán</span>
+          <span class="doc-drop-hint">arrastra aqui</span>
+          <span class="doc-file-name" id="pedido-doc-albaran-name">—</span>
+          <label class="doc-upload-label">↑ Subir
+            <input class="doc-upload-input" type="file" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls" onchange="uploadPedidoDoc(this,'albaran')">
+          </label>
+        </div>
+        <div class="doc-type-row" id="pedido-drop-factura"
+             ondragover="handleDragOver2(event,'factura')"
+             ondragleave="handleDragLeave2(event,'factura')"
+             ondrop="handleDrop2(event,'factura')">
+          <span class="doc-type-name">Factura</span>
+          <span class="doc-drop-hint">arrastra aqui</span>
+          <span class="doc-file-name" id="pedido-doc-factura-name">—</span>
+          <label class="doc-upload-label">↑ Subir
+            <input class="doc-upload-input" type="file" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls" onchange="uploadPedidoDoc(this,'factura')">
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Líneas del pedido -->
+    <div class="docs-section" style="margin-top:24px">
+      <div class="docs-section-title">Líneas del pedido</div>
+      <div id="pedido-lineas"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     MODAL: NOTA
+══════════════════════════════════ -->
+<div class="modal-overlay" id="modal-nota">
+  <div class="modal" style="max-width:500px">
+    <button class="modal-close" onclick="closeModal('nota')">✕</button>
+    <div class="modal-title" id="nota-modal-title">Nota</div>
+    <div style="margin-top:16px;font-family:var(--mono);font-size:13px;color:var(--text2);line-height:1.8;white-space:pre-wrap" id="nota-modal-content"></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('nota')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
