@@ -1,0 +1,2101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MFR · Gestión de Gastos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+// ── DRAG AND DROP DOCS ───────────────────────────────────
+function handleDragOver(e, tipo) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.add('drag-over');
+}
+function handleDragLeave(e, tipo) {
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.remove('drag-over');
+}
+function handleDrop(e, tipo) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const fakeInput = { files: [file] };
+  uploadDoc(fakeInput, tipo);
+}
+
+</script>
+<style>
+  :root {
+    --bg: #0e0f11;
+    --bg2: #161820;
+    --bg3: #1e2028;
+    --border: #2a2d38;
+    --border2: #363a4a;
+    --amber: #f5a623;
+    --amber2: #e8961a;
+    --amber-dim: rgba(245,166,35,0.12);
+    --amber-glow: rgba(245,166,35,0.06);
+    --text: #e8e9ec;
+    --text2: #9499a8;
+    --text3: #5c6070;
+    --green: #4ade80;
+    --green-dim: rgba(74,222,128,0.1);
+    --red: #f87171;
+    --red-dim: rgba(248,113,113,0.1);
+    --blue: #60a5fa;
+    --blue-dim: rgba(96,165,250,0.1);
+    --yellow: #fbbf24;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+    --radius: 6px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg2); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* ── SCREEN SYSTEM ── */
+  .screen { display: none; min-height: 100vh; }
+  .screen.active { display: flex; flex-direction: column; }
+
+  /* ══════════════════════════════════════
+     LOGIN SCREEN
+  ══════════════════════════════════════ */
+  #screen-login {
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    position: relative;
+    overflow: hidden;
+  }
+  #screen-login::before {
+    content: '';
+    position: absolute;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(245,166,35,0.07) 0%, transparent 70%);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  .login-box {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 48px 40px;
+    width: 100%;
+    max-width: 400px;
+    position: relative;
+    z-index: 1;
+  }
+  .login-logo {
+    font-family: var(--mono);
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--amber);
+    letter-spacing: -1px;
+    margin-bottom: 6px;
+  }
+  .login-subtitle {
+    color: var(--text3);
+    font-size: 12px;
+    font-family: var(--mono);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 40px;
+  }
+  .login-label {
+    display: block;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--text3);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .login-input {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    padding: 12px 16px;
+    outline: none;
+    transition: border-color .2s;
+    margin-bottom: 20px;
+  }
+  .login-input:focus { border-color: var(--amber); }
+  .btn-primary {
+    width: 100%;
+    background: var(--amber);
+    color: #0e0f11;
+    border: none;
+    border-radius: var(--radius);
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 13px;
+    cursor: pointer;
+    transition: background .2s, transform .1s;
+  }
+  .btn-primary:hover { background: var(--amber2); }
+  .btn-primary:active { transform: scale(.98); }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+  .login-msg {
+    margin-top: 16px;
+    font-size: 13px;
+    text-align: center;
+    min-height: 20px;
+    color: var(--text2);
+  }
+  .login-msg.success { color: var(--green); }
+  .login-msg.error { color: var(--red); }
+
+  /* ══════════════════════════════════════
+     MAIN APP SCREEN
+  ══════════════════════════════════════ */
+  #screen-app { flex-direction: column; }
+
+  /* TOPBAR */
+  .topbar {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .topbar-logo {
+    font-family: var(--mono);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--amber);
+    letter-spacing: -0.5px;
+    margin-right: 8px;
+  }
+  .nav-tabs {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+  }
+  .nav-tab {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    color: var(--text3);
+    border: 1px solid transparent;
+    background: none;
+    transition: all .2s;
+    white-space: nowrap;
+  }
+  .nav-tab:hover { color: var(--text2); background: var(--bg3); }
+  .nav-tab.active { color: var(--amber); background: var(--amber-dim); border-color: rgba(245,166,35,.2); }
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-left: auto;
+  }
+  .user-email {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .btn-icon {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text2);
+    cursor: pointer;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-family: var(--mono);
+    transition: all .2s;
+  }
+  .btn-icon:hover { border-color: var(--border2); color: var(--text); }
+
+  /* MAIN CONTENT */
+  .main-content {
+    flex: 1;
+    overflow: auto;
+    padding: 24px;
+  }
+
+  /* PANEL (each tab content) */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* FILTERS BAR */
+  .filters-bar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .filter-select, .filter-input {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 7px 12px;
+    outline: none;
+    transition: border-color .2s;
+    cursor: pointer;
+  }
+  .filter-select:focus, .filter-input:focus { border-color: var(--amber); }
+  .filter-input { min-width: 200px; }
+  .filter-input::placeholder { color: var(--text3); }
+  .filter-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    padding: 4px 10px;
+    background: var(--bg3);
+    border-radius: 20px;
+    border: 1px solid var(--border);
+  }
+  .filter-badge span { color: var(--amber); font-weight: 600; }
+  .filters-right { margin-left: auto; display: flex; gap: 8px; }
+  .btn-add {
+    background: var(--amber);
+    color: #0e0f11;
+    border: none;
+    border-radius: var(--radius);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .5px;
+    padding: 7px 16px;
+    cursor: pointer;
+    transition: background .2s;
+  }
+  .btn-add:hover { background: var(--amber2); }
+
+  /* TABLE */
+  .table-wrapper {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .data-table thead th {
+    background: var(--bg3);
+    color: var(--text3);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    transition: color .2s;
+  }
+  .data-table thead th:hover { color: var(--text); }
+  .data-table thead th.sorted { color: var(--amber); }
+  .data-table tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background .15s;
+  }
+  .data-table tbody tr:last-child { border-bottom: none; }
+  .data-table tbody tr:hover { background: var(--amber-glow); }
+  .data-table td {
+    padding: 9px 12px;
+    color: var(--text2);
+    white-space: nowrap;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+  }
+  .data-table td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+  }
+  .data-table td.num.positive { color: var(--green); }
+  .data-table td.highlight { color: var(--text); }
+
+  /* DOC STATUS ICONS */
+  .doc-status {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+  .doc-pill {
+    font-size: 9px;
+    font-family: var(--mono);
+    font-weight: 600;
+    letter-spacing: .5px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .doc-pill.has { background: var(--green-dim); color: var(--green); border: 1px solid rgba(74,222,128,.2); }
+  .doc-pill.missing { background: var(--bg3); color: var(--text3); border: 1px solid var(--border); }
+  .doc-pill.missing:hover { border-color: var(--amber); color: var(--amber); }
+  .doc-pill.has:hover { opacity: .8; }
+
+  /* DINGO badge */
+  .badge-dingo {
+    font-size: 9px;
+    font-family: var(--mono);
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 3px;
+    text-transform: uppercase;
+  }
+  .badge-dingo.yes { background: var(--green-dim); color: var(--green); border: 1px solid rgba(74,222,128,.2); }
+  .badge-dingo.no { background: var(--red-dim); color: var(--red); border: 1px solid rgba(248,113,113,.2); }
+
+  /* MES badge */
+  .badge-mes {
+    font-size: 9px;
+    font-family: var(--mono);
+    letter-spacing: .5px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: var(--bg3);
+    color: var(--text3);
+    border: 1px solid var(--border);
+    text-transform: uppercase;
+  }
+
+  /* ── ROW ACTIONS ── */
+  .row-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity .2s;
+  }
+  .data-table tbody tr:hover .row-actions { opacity: 1; }
+  .btn-row {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    color: var(--text3);
+    cursor: pointer;
+    padding: 3px 7px;
+    font-size: 11px;
+    transition: all .15s;
+  }
+  .btn-row:hover { color: var(--amber); border-color: var(--amber); }
+  .btn-row.danger:hover { color: var(--red); border-color: var(--red); }
+
+  /* TOTALS BAR */
+  .totals-bar {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .total-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 18px;
+    min-width: 160px;
+  }
+  .total-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .total-value {
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--amber);
+    font-variant-numeric: tabular-nums;
+  }
+  .total-sub {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    margin-top: 2px;
+  }
+
+  /* EMPTY STATE */
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text3);
+    font-family: var(--mono);
+  }
+  .empty-state-icon { font-size: 32px; margin-bottom: 12px; }
+  .empty-state-text { font-size: 13px; margin-bottom: 8px; color: var(--text2); }
+  .empty-state-sub { font-size: 11px; }
+
+  /* ══════════════════════════════════════
+     MODAL
+  ══════════════════════════════════════ */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.7);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 700px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 32px;
+    position: relative;
+    animation: modal-in .2s ease;
+  }
+  @keyframes modal-in { from { opacity: 0; transform: translateY(-16px) scale(.97); } to { opacity: 1; transform: none; } }
+  .modal-title {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .modal-sub {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    margin-bottom: 28px;
+    letter-spacing: .5px;
+  }
+  .modal-close {
+    position: absolute;
+    top: 20px; right: 20px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text2);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px 10px;
+    line-height: 1;
+    transition: all .15s;
+  }
+  .modal-close:hover { color: var(--text); border-color: var(--border2); }
+
+  /* FORM */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .form-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .form-grid.cols-1 { grid-template-columns: 1fr; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group.span2 { grid-column: span 2; }
+  .form-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .form-input, .form-select, .form-textarea {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 9px 12px;
+    outline: none;
+    transition: border-color .2s;
+    width: 100%;
+  }
+  .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--amber); }
+  .form-textarea { resize: vertical; min-height: 70px; }
+  .form-select option { background: var(--bg3); }
+  .modal-footer {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+  .btn-secondary {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius);
+    color: var(--text2);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 9px 20px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .btn-secondary:hover { color: var(--text); border-color: var(--text3); }
+  .btn-submit {
+    background: var(--amber);
+    border: none;
+    border-radius: var(--radius);
+    color: #0e0f11;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .5px;
+    padding: 9px 24px;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .btn-submit:hover { background: var(--amber2); }
+  .btn-submit:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* DOCS SECTION in modal */
+  .docs-section { margin-top: 24px; }
+  .docs-section-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .doc-type-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .doc-type-row:last-child { border-bottom: none; }
+  .doc-type-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text2);
+    width: 120px;
+    flex-shrink: 0;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+  }
+  .doc-file-name {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .doc-file-name a { color: var(--blue); text-decoration: none; }
+  .doc-file-name a:hover { text-decoration: underline; }
+  .doc-upload-label {
+    background: var(--bg3);
+    border: 1px dashed var(--border2);
+    border-radius: var(--radius);
+    color: var(--text3);
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 5px 12px;
+    transition: all .15s;
+    white-space: nowrap;
+  }
+  .doc-upload-label:hover { border-color: var(--amber); color: var(--amber); }
+  .doc-upload-input { display: none; }
+
+  /* TOAST */
+  .toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+  }
+  .toast {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 12px 18px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    pointer-events: all;
+    animation: toast-in .25s ease;
+    max-width: 320px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    box-shadow: 0 8px 32px rgba(0,0,0,.4);
+  }
+  .toast.success { border-left: 3px solid var(--green); }
+  .toast.error { border-left: 3px solid var(--red); }
+  .toast.info { border-left: 3px solid var(--amber); }
+  @keyframes toast-in { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+  @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateX(20px); } }
+
+  /* LOADING */
+  .loading-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(14,15,17,.8);
+    z-index: 9000;
+    align-items: center;
+    justify-content: center;
+  }
+  .loading-overlay.open { display: flex; }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 2px solid var(--border2);
+    border-top-color: var(--amber);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* PAGINATION */
+  .pagination {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+    padding: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .page-btn {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text2);
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 5px 10px;
+    transition: all .15s;
+  }
+  .page-btn:hover:not(:disabled) { border-color: var(--amber); color: var(--amber); }
+  .page-btn:disabled { opacity: .3; cursor: not-allowed; }
+  .page-btn.current { background: var(--amber-dim); border-color: rgba(245,166,35,.3); color: var(--amber); }
+  .page-info { font-family: var(--mono); font-size: 11px; color: var(--text3); }
+
+  /* SETUP SCREEN */
+  .setup-notice {
+    background: var(--amber-dim);
+    border: 1px solid rgba(245,166,35,.3);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--amber);
+    margin-bottom: 20px;
+    line-height: 1.6;
+  }
+  .code-block {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    line-height: 1.8;
+    overflow-x: auto;
+    margin-bottom: 16px;
+    white-space: pre;
+  }
+
+  /* DASHBOARD */
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .stat-value {
+    font-family: var(--mono);
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--amber);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .stat-sub {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+  }
+
+  /* RESPONSIVE */
+  @media (max-width: 768px) {
+    .topbar { padding: 0 12px; gap: 8px; }
+    .user-email { display: none; }
+    .main-content { padding: 12px; }
+    .dashboard-grid { grid-template-columns: 1fr 1fr; }
+    .form-grid { grid-template-columns: 1fr; }
+    .form-grid.cols-3 { grid-template-columns: 1fr; }
+    .form-group.span2 { grid-column: span 1; }
+  }
+
+
+  /* DRAG AND DROP */
+  .doc-type-row {
+    transition: background .15s, border-color .15s;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+  }
+  .doc-type-row.drag-over {
+    background: var(--amber-dim);
+    border: 1px dashed var(--amber);
+  }
+  .doc-upload-label {
+    position: relative;
+  }
+  .doc-drop-hint {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: .5px;
+    margin-left: 4px;
+  }
+
+  /* IMPORT SECTION */
+  .import-zone {
+    border: 2px dashed var(--border2);
+    border-radius: 10px;
+    padding: 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .import-zone:hover, .import-zone.drag-over {
+    border-color: var(--amber);
+    background: var(--amber-glow);
+  }
+  .import-zone-icon { font-size: 36px; margin-bottom: 12px; }
+  .import-zone-text {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text2);
+    margin-bottom: 6px;
+  }
+  .import-zone-sub { font-family: var(--mono); font-size: 11px; color: var(--text3); }
+</style>
+</head>
+<body>
+
+<!-- ── LOADING ── -->
+<div class="loading-overlay" id="loading">
+  <div class="spinner"></div>
+</div>
+
+<!-- ── TOAST CONTAINER ── -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ══════════════════════════════════
+     SCREEN: LOGIN
+══════════════════════════════════ -->
+<div class="screen" id="screen-login">
+  <div class="login-box">
+    <div class="login-logo">MFR_</div>
+    <div class="login-subtitle">Gestión de Gastos · 2025</div>
+    <label class="login-label" for="login-email">Email</label>
+    <input class="login-input" type="email" id="login-email" placeholder="tu@email.com" autocomplete="email">
+    <button class="btn-primary" id="login-btn" onclick="sendMagicLink()">Enviar magic link</button>
+    <div style="display:flex;align-items:center;gap:10px;margin:16px 0">
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">O ENTRA CON CONTRASENA</span>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+    </div>
+    <label class="login-label" for="login-pass">Contrasena</label>
+    <input class="login-input" type="password" id="login-pass" placeholder="Tu contrasena" autocomplete="current-password">
+    <button class="btn-primary" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2)" id="login-pass-btn" onclick="loginWithPassword()">Entrar con contrasena</button>
+    <div class="login-msg" id="login-msg"></div>
+  </div>
+</div>
+
+
+<!-- SCREEN: RESET PASSWORD -->
+<div class="screen" id="screen-reset">
+  <div class="login-box">
+    <div class="login-logo">MFR_</div>
+    <div class="login-subtitle">Nueva contrasena</div>
+    <label class="login-label" for="reset-pass">Nueva contrasena</label>
+    <input class="login-input" type="password" id="reset-pass" placeholder="Minimo 6 caracteres">
+    <label class="login-label" for="reset-pass2">Confirmar contrasena</label>
+    <input class="login-input" type="password" id="reset-pass2" placeholder="Repite la contrasena">
+    <button class="btn-primary" id="reset-btn" onclick="doResetPassword()">Guardar contrasena</button>
+    <div class="login-msg" id="reset-msg"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SCREEN: MAIN APP
+══════════════════════════════════ -->
+<div class="screen" id="screen-app">
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <span class="topbar-logo">MFR_</span>
+    <nav class="nav-tabs">
+      <button class="nav-tab active" onclick="switchTab('dashboard')">Dashboard</button>
+      <button class="nav-tab" onclick="switchTab('mantenimiento')">Mantenimiento</button>
+      <button class="nav-tab" onclick="switchTab('alquiler')">Alquileres</button>
+      <button class="nav-tab" onclick="switchTab('compras')">Compras</button>
+    </nav>
+    <div class="topbar-right">
+      <span class="user-email" id="userEmail"></span>
+      <button class="btn-icon" onclick="openImport()" title="Importar Excel">↑ Import</button>
+      <button class="btn-icon" onclick="logout()">Salir</button>
+    </div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div class="main-content">
+
+    <!-- SETUP NOTICE (shown if Supabase not configured) -->
+    <div id="setup-notice" style="display:none">
+      <div class="setup-notice">
+        ⚠ Configura tu Supabase antes de usar la app. Edita las variables SUPABASE_URL y SUPABASE_ANON_KEY al inicio del script, y crea las tablas con el SQL de abajo.
+      </div>
+      <div class="code-block">-- Ejecuta este SQL en tu proyecto Supabase (SQL Editor)
+
+create table gastos (
+  id uuid primary key default gen_random_uuid(),
+  tipo text not null check (tipo in ('mantenimiento','alquiler','compra')),
+  fecha_envio date,
+  fecha_recepcion date,
+  año integer,
+  mes text,
+  code text,
+  elemento text,
+  descripcion text,
+  averia text,
+  produccion text,
+  proveedor text,
+  coste numeric(12,2),
+  refact numeric(12,2),
+  albaran_num text,
+  factura_num text,
+  num_pedido text,
+  dingo boolean default false,
+  notas text,
+  created_at timestamptz default now(),
+  created_by uuid references auth.users(id)
+);
+
+create table documentos (
+  id uuid primary key default gen_random_uuid(),
+  gasto_id uuid references gastos(id) on delete cascade,
+  tipo text not null check (tipo in ('presupuesto','albaran','factura')),
+  nombre_archivo text,
+  storage_path text,
+  url text,
+  created_at timestamptz default now()
+);
+
+-- Habilitar RLS
+alter table gastos enable row level security;
+alter table documentos enable row level security;
+
+-- Políticas: usuarios autenticados pueden hacer todo
+create policy "auth_all_gastos" on gastos for all to authenticated using (true) with check (true);
+create policy "auth_all_documentos" on documentos for all to authenticated using (true) with check (true);
+
+-- Bucket para documentos (crear en Storage > New bucket, nombre: "documentos", public: false)
+-- Política de storage:
+create policy "auth_storage" on storage.objects for all to authenticated using (bucket_id = 'documentos') with check (bucket_id = 'documentos');</div>
+    </div>
+
+    <!-- DASHBOARD TAB -->
+    <div class="panel active" id="panel-dashboard">
+      <div class="dashboard-grid" id="dash-stats">
+        <div class="stat-card">
+          <div class="stat-label">Total Mantenimiento</div>
+          <div class="stat-value" id="dash-mant-total">—</div>
+          <div class="stat-sub" id="dash-mant-count">— registros</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Alquileres</div>
+          <div class="stat-value" id="dash-alq-total">—</div>
+          <div class="stat-sub" id="dash-alq-count">— registros</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Compras</div>
+          <div class="stat-value" id="dash-comp-total">—</div>
+          <div class="stat-sub" id="dash-comp-count">— registros</div>
+        </div>
+      </div>
+      <div class="dashboard-grid" id="dash-docs-stats">
+        <div class="stat-card">
+          <div class="stat-label">Documentos pendientes</div>
+          <div class="stat-value" id="dash-docs-pending" style="color:var(--red)">—</div>
+          <div class="stat-sub">registros sin documentos</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Sin refacturar</div>
+          <div class="stat-value" id="dash-sin-refact" style="color:var(--yellow)">—</div>
+          <div class="stat-sub">campo refact. vacío</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total refacturado</div>
+          <div class="stat-value" id="dash-total-refact">—</div>
+          <div class="stat-sub">suma total REFACT.</div>
+        </div>
+      </div>
+      <div class="table-wrapper" id="dash-recent">
+        <div class="empty-state">
+          <div class="empty-state-icon">📊</div>
+          <div class="empty-state-text">Carga datos para ver el dashboard</div>
+          <div class="empty-state-sub">Usa el botón Import para importar tu Excel</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MANTENIMIENTO TAB -->
+    <div class="panel" id="panel-mantenimiento">
+      <div class="totals-bar" id="totals-mantenimiento"></div>
+      <div class="filters-bar">
+        <select class="filter-select" id="filt-mant-año" onchange="renderTable('mantenimiento')">
+          <option value="">Todos los años</option>
+        </select>
+        <select class="filter-select" id="filt-mant-mes" onchange="renderTable('mantenimiento')">
+          <option value="">Todos los meses</option>
+        </select>
+        <select class="filter-select" id="filt-mant-prod" onchange="renderTable('mantenimiento')">
+          <option value="">Todas las producciones</option>
+        </select>
+        <select class="filter-select" id="filt-mant-prov" onchange="renderTable('mantenimiento')">
+          <option value="">Todos los proveedores</option>
+        </select>
+        <select class="filter-select" id="filt-mant-elem" onchange="renderTable('mantenimiento')">
+          <option value="">Todos los elementos</option>
+        </select>
+        <input class="filter-input" id="filt-mant-search" placeholder="Buscar descripción..." oninput="renderTable('mantenimiento')">
+        <div class="filter-badge" id="badge-mantenimiento">Cargando…</div>
+        <div class="filters-right">
+          <button class="btn-add" onclick="openNewGasto('mantenimiento')">+ Nuevo</button>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table class="data-table" id="table-mantenimiento">
+          <thead><tr>
+            <th onclick="sortTable('mantenimiento','fecha_envio')">Fecha</th>
+            <th onclick="sortTable('mantenimiento','mes')">Mes</th>
+            <th onclick="sortTable('mantenimiento','code')">Code</th>
+            <th onclick="sortTable('mantenimiento','elemento')">Elemento</th>
+            <th onclick="sortTable('mantenimiento','descripcion')">Descripción</th>
+            <th onclick="sortTable('mantenimiento','produccion')">Producción</th>
+            <th onclick="sortTable('mantenimiento','proveedor')">Proveedor</th>
+            <th onclick="sortTable('mantenimiento','coste')" class="num">Coste</th>
+            <th onclick="sortTable('mantenimiento','refact')" class="num">Refact.</th>
+            <th>Pedido</th>
+            <th>Docs</th>
+            <th>Dingo</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="tbody-mantenimiento"></tbody>
+        </table>
+        <div class="pagination" id="pag-mantenimiento"></div>
+      </div>
+    </div>
+
+    <!-- ALQUILER TAB -->
+    <div class="panel" id="panel-alquiler">
+      <div class="totals-bar" id="totals-alquiler"></div>
+      <div class="filters-bar">
+        <select class="filter-select" id="filt-alq-año" onchange="renderTable('alquiler')">
+          <option value="">Todos los años</option>
+        </select>
+        <select class="filter-select" id="filt-alq-mes" onchange="renderTable('alquiler')">
+          <option value="">Todos los meses</option>
+        </select>
+        <select class="filter-select" id="filt-alq-prod" onchange="renderTable('alquiler')">
+          <option value="">Todas las producciones</option>
+        </select>
+        <select class="filter-select" id="filt-alq-prov" onchange="renderTable('alquiler')">
+          <option value="">Todos los proveedores</option>
+        </select>
+        <input class="filter-input" id="filt-alq-search" placeholder="Buscar descripción..." oninput="renderTable('alquiler')">
+        <div class="filter-badge" id="badge-alquiler">Cargando…</div>
+        <div class="filters-right">
+          <button class="btn-add" onclick="openNewGasto('alquiler')">+ Nuevo</button>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table class="data-table" id="table-alquiler">
+          <thead><tr>
+            <th onclick="sortTable('alquiler','fecha_envio')">Fecha</th>
+            <th onclick="sortTable('alquiler','mes')">Mes</th>
+            <th onclick="sortTable('alquiler','elemento')">Elemento</th>
+            <th onclick="sortTable('alquiler','descripcion')">Descripción</th>
+            <th onclick="sortTable('alquiler','produccion')">Producción</th>
+            <th onclick="sortTable('alquiler','proveedor')">Proveedor</th>
+            <th onclick="sortTable('alquiler','coste')" class="num">Coste</th>
+            <th onclick="sortTable('alquiler','refact')" class="num">Refact.</th>
+            <th>Pedido</th>
+            <th>Docs</th>
+            <th>Dingo</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="tbody-alquiler"></tbody>
+        </table>
+        <div class="pagination" id="pag-alquiler"></div>
+      </div>
+    </div>
+
+    <!-- COMPRAS TAB -->
+    <div class="panel" id="panel-compras">
+      <div class="totals-bar" id="totals-compras"></div>
+      <div class="filters-bar">
+        <select class="filter-select" id="filt-comp-año" onchange="renderTable('compras')">
+          <option value="">Todos los años</option>
+        </select>
+        <select class="filter-select" id="filt-comp-mes" onchange="renderTable('compras')">
+          <option value="">Todos los meses</option>
+        </select>
+        <select class="filter-select" id="filt-comp-prod" onchange="renderTable('compras')">
+          <option value="">Todas las producciones</option>
+        </select>
+        <select class="filter-select" id="filt-comp-prov" onchange="renderTable('compras')">
+          <option value="">Todos los proveedores</option>
+        </select>
+        <input class="filter-input" id="filt-comp-search" placeholder="Buscar descripción..." oninput="renderTable('compras')">
+        <div class="filter-badge" id="badge-compras">Cargando…</div>
+        <div class="filters-right">
+          <button class="btn-add" onclick="openNewGasto('compras')">+ Nuevo</button>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table class="data-table" id="table-compras">
+          <thead><tr>
+            <th onclick="sortTable('compras','fecha_envio')">Fecha</th>
+            <th onclick="sortTable('compras','mes')">Mes</th>
+            <th onclick="sortTable('compras','elemento')">Elemento</th>
+            <th onclick="sortTable('compras','descripcion')">Descripción</th>
+            <th onclick="sortTable('compras','produccion')">Producción</th>
+            <th onclick="sortTable('compras','proveedor')">Proveedor</th>
+            <th onclick="sortTable('compras','coste')" class="num">Coste</th>
+            <th onclick="sortTable('compras','refact')" class="num">Refact.</th>
+            <th>Pedido</th>
+            <th>Docs</th>
+            <th>Dingo</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="tbody-compras"></tbody>
+        </table>
+        <div class="pagination" id="pag-compras"></div>
+      </div>
+    </div>
+
+  </div><!-- /main-content -->
+</div><!-- /screen-app -->
+
+<!-- ══════════════════════════════════
+     MODAL: NUEVO/EDITAR GASTO
+══════════════════════════════════ -->
+<div class="modal-overlay" id="modal-gasto">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('gasto')">✕</button>
+    <div class="modal-title" id="modal-gasto-title">Nuevo gasto</div>
+    <div class="modal-sub" id="modal-gasto-sub">—</div>
+
+    <div class="form-grid cols-3">
+      <div class="form-group">
+        <label class="form-label">Fecha envío</label>
+        <input class="form-input" type="date" id="f-fecha-envio">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fecha recepción</label>
+        <input class="form-input" type="date" id="f-fecha-recepcion">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Mes</label>
+        <select class="form-select" id="f-mes">
+          <option value="">—</option>
+          <option>ENERO</option><option>FEBRERO</option><option>MARZO</option>
+          <option>ABRIL</option><option>MAYO</option><option>JUNIO</option>
+          <option>JULIO</option><option>AGOSTO</option><option>SEPTIEMBRE</option>
+          <option>OCTUBRE</option><option>NOVIEMBRE</option><option>DICIEMBRE</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Code / Nº Serie</label>
+        <input class="form-input" type="text" id="f-code" placeholder="Ej: 8748">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Elemento</label>
+        <input class="form-input" type="text" id="f-elemento" placeholder="Ej: CAM, AUDIO...">
+      </div>
+    </div>
+
+    <div class="form-grid cols-1">
+      <div class="form-group">
+        <label class="form-label">Descripción</label>
+        <input class="form-input" type="text" id="f-descripcion" placeholder="Descripción del gasto">
+      </div>
+    </div>
+
+    <div class="form-grid cols-1">
+      <div class="form-group">
+        <label class="form-label">Avería</label>
+        <input class="form-input" type="text" id="f-averia" placeholder="Descripción de la avería (si aplica)">
+      </div>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Producción</label>
+        <input class="form-input" type="text" id="f-produccion" placeholder="Ej: SEXTA MAD, A3 MAD...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Proveedor</label>
+        <input class="form-input" type="text" id="f-proveedor" placeholder="Ej: RIVAS, VMB...">
+      </div>
+    </div>
+
+    <div class="form-grid cols-3">
+      <div class="form-group">
+        <label class="form-label">Coste (€)</label>
+        <input class="form-input" type="number" id="f-coste" step="0.01" placeholder="0.00">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Refact. (€)</label>
+        <input class="form-input" type="number" id="f-refact" step="0.01" placeholder="0.00">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nº Pedido</label>
+        <input class="form-input" type="text" id="f-num-pedido" placeholder="4300075xxx">
+      </div>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Nº Albarán</label>
+        <input class="form-input" type="text" id="f-albaran">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nº Factura</label>
+        <input class="form-input" type="text" id="f-factura">
+      </div>
+    </div>
+
+    <div class="form-grid cols-1">
+      <div class="form-group">
+        <label class="form-label">Notas</label>
+        <textarea class="form-textarea" id="f-notas" placeholder="Notas adicionales..."></textarea>
+      </div>
+    </div>
+
+    <div class="form-grid cols-3">
+      <div class="form-group">
+        <label class="form-label">DINGO</label>
+        <select class="form-select" id="f-dingo">
+          <option value="true">✓ Sí</option>
+          <option value="false">✗ No</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Documentos adjuntos -->
+    <div class="docs-section" id="docs-section" style="display:none">
+      <div class="docs-section-title">Documentos adjuntos</div>
+      <div id="docs-list">
+        <div class="doc-type-row" id="drop-presupuesto"
+             ondragover="handleDragOver(event,'presupuesto')"
+             ondragleave="handleDragLeave(event,'presupuesto')"
+             ondrop="handleDrop(event,'presupuesto')">
+          <span class="doc-type-name">Presupuesto</span><span class="doc-drop-hint">arrastra aqui</span>
+          <span class="doc-file-name" id="doc-presupuesto-name">—</span>
+          <label class="doc-upload-label">
+            ↑ Subir <input class="doc-upload-input" type="file" accept=".pdf,.jpg,.jpeg,.png" onchange="uploadDoc(this,'presupuesto')">
+          </label>
+        </div>
+        <div class="doc-type-row" id="drop-albaran"
+             ondragover="handleDragOver(event,'albaran')"
+             ondragleave="handleDragLeave(event,'albaran')"
+             ondrop="handleDrop(event,'albaran')">
+          <span class="doc-type-name">Albarán</span><span class="doc-drop-hint">arrastra aqui</span>
+          <span class="doc-file-name" id="doc-albaran-name">—</span>
+          <label class="doc-upload-label">
+            ↑ Subir <input class="doc-upload-input" type="file" accept=".pdf,.jpg,.jpeg,.png" onchange="uploadDoc(this,'albaran')">
+          </label>
+        </div>
+        <div class="doc-type-row" id="drop-factura"
+             ondragover="handleDragOver(event,'factura')"
+             ondragleave="handleDragLeave(event,'factura')"
+             ondrop="handleDrop(event,'factura')">
+          <span class="doc-type-name">Factura</span><span class="doc-drop-hint">arrastra aqui</span>
+          <span class="doc-file-name" id="doc-factura-name">—</span>
+          <label class="doc-upload-label">
+            ↑ Subir <input class="doc-upload-input" type="file" accept=".pdf,.jpg,.jpeg,.png" onchange="uploadDoc(this,'factura')">
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('gasto')">Cancelar</button>
+      <button class="btn-submit" id="btn-save-gasto" onclick="saveGasto()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     MODAL: IMPORT
+══════════════════════════════════ -->
+<div class="modal-overlay" id="modal-import">
+  <div class="modal" style="max-width:500px">
+    <button class="modal-close" onclick="closeModal('import')">✕</button>
+    <div class="modal-title">Importar Excel</div>
+    <div class="modal-sub">Sube tu fichero M_F_R_2025.xlsx para importar los datos</div>
+    <div class="setup-notice" style="margin-bottom:16px">
+      La importación añade los registros del Excel a la base de datos. Los registros duplicados (mismo pedido + elemento) se omiten automáticamente.
+    </div>
+    <div class="import-zone" id="import-zone" onclick="document.getElementById('import-file').click()"
+         ondragover="e.preventDefault();this.classList.add('drag-over')"
+         ondragleave="this.classList.remove('drag-over')"
+         ondrop="handleImportDrop(event)">
+      <div class="import-zone-icon">📂</div>
+      <div class="import-zone-text">Haz clic o arrastra tu Excel aquí</div>
+      <div class="import-zone-sub">.xlsx · M_F_R_2025.xlsx</div>
+    </div>
+    <input type="file" id="import-file" accept=".xlsx" style="display:none" onchange="handleImportFile(this)">
+    <div id="import-status" style="margin-top:16px;font-family:var(--mono);font-size:12px;color:var(--text3);"></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('import')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js">
+// ── DRAG AND DROP DOCS ───────────────────────────────────
+function handleDragOver(e, tipo) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.add('drag-over');
+}
+function handleDragLeave(e, tipo) {
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.remove('drag-over');
+}
+function handleDrop(e, tipo) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const fakeInput = { files: [file] };
+  uploadDoc(fakeInput, tipo);
+}
+
+</script>
+<script>
+// ══════════════════════════════════════════════════════════
+//  ⚙️  CONFIGURACIÓN — edita estas dos líneas con tus datos
+// ══════════════════════════════════════════════════════════
+const SUPABASE_URL  = 'https://rtivrsmvjardvkbghlin.supabase.co';   // ← cambia esto
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ0aXZyc212amFyZHZrYmdobGluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4ODg4MTQsImV4cCI6MjA5NTQ2NDgxNH0.An3ugYj-jJn2ek4vgRQ2Jnkvx9LKUjMy-WEJiUu_9V8';                        // ← cambia esto
+// ══════════════════════════════════════════════════════════
+
+const IS_CONFIGURED = true;
+
+let sb = null;
+if (IS_CONFIGURED) {
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+}
+
+// ── STATE ────────────────────────────────────────────────
+let currentUser = null;
+let currentTab = 'dashboard';
+let editingId = null;
+let editingTipo = null;
+
+const data = { mantenimiento: [], alquiler: [], compras: [] };
+const docs = {};            // gasto_id -> { presupuesto, albaran, factura }
+const sort = {
+  mantenimiento: { col: 'fecha_envio', dir: -1 },
+  alquiler:      { col: 'fecha_envio', dir: -1 },
+  compras:       { col: 'fecha_envio', dir: -1 },
+};
+const pages = { mantenimiento: 1, alquiler: 1, compras: 1 };
+const PAGE_SIZE = 50;
+
+const MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
+               'JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+
+// ── INIT ─────────────────────────────────────────────────
+(async function init() {
+  if (!IS_CONFIGURED) {
+    showScreen('app');
+    document.getElementById('setup-notice').style.display = 'block';
+    document.getElementById('userEmail').textContent = 'demo@mode';
+    renderDemoState();
+    return;
+  }
+  // Handle recovery token in URL hash
+  if (window.location.hash.includes('type=recovery')) {
+    showScreen('reset');
+    return;
+  }
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    currentUser = session.user;
+    showScreen('app');
+    document.getElementById('userEmail').textContent = currentUser.email;
+    await loadAllData();
+  } else {
+    showScreen('login');
+  }
+  sb.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY') {
+      showScreen('reset');
+      return;
+    }
+    if (event === 'SIGNED_IN' && session) {
+      currentUser = session.user;
+      document.getElementById('userEmail').textContent = currentUser.email;
+      showScreen('app');
+      loadAllData();
+    } else if (event === 'SIGNED_OUT') {
+      currentUser = null;
+      showScreen('login');
+    }
+  });
+})();
+
+function renderDemoState() {
+  ['mantenimiento','alquiler','compras'].forEach(t => {
+    document.getElementById(`badge-${t}`).innerHTML = '<span>0</span> registros';
+    document.getElementById(`tbody-${t}`).innerHTML =
+      `<tr><td colspan="13" style="text-align:center;padding:40px;color:var(--text3);font-family:var(--mono)">
+        Configura Supabase para usar la app · Ver instrucciones arriba
+      </td></tr>`;
+  });
+}
+
+// ── AUTH ─────────────────────────────────────────────────
+async function loginWithPassword() {
+  const email = document.getElementById("login-email").value.trim();
+  const pass = document.getElementById("login-pass").value;
+  if (!email || !pass) return;
+  const btn = document.getElementById("login-pass-btn");
+  const msg = document.getElementById("login-msg");
+  btn.disabled = true;
+  btn.textContent = "Entrando...";
+  try {
+    const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+    if (error) throw error;
+  } catch(e) {
+    msg.className = "login-msg error";
+    msg.textContent = "Error: " + e.message;
+    btn.disabled = false;
+    btn.textContent = "Entrar con contrasena";
+  }
+}
+
+async function doResetPassword() {
+  const pass = document.getElementById("reset-pass").value;
+  const pass2 = document.getElementById("reset-pass2").value;
+  const msg = document.getElementById("reset-msg");
+  const btn = document.getElementById("reset-btn");
+  if (pass.length < 6) { msg.className="login-msg error"; msg.textContent="Minimo 6 caracteres"; return; }
+  if (pass !== pass2) { msg.className="login-msg error"; msg.textContent="Las contrasenas no coinciden"; return; }
+  btn.disabled = true;
+  btn.textContent = "Guardando...";
+  try {
+    const { error } = await sb.auth.updateUser({ password: pass });
+    if (error) throw error;
+    msg.className = "login-msg success";
+    msg.textContent = "Contrasena guardada. Redirigiendo...";
+    setTimeout(() => { showScreen("app"); loadAllData(); }, 1500);
+  } catch(e) {
+    msg.className = "login-msg error";
+    msg.textContent = "Error: " + e.message;
+    btn.disabled = false;
+    btn.textContent = "Guardar contrasena";
+  }
+}
+
+async function sendMagicLink() {
+  const email = document.getElementById('login-email').value.trim();
+  if (!email) return;
+  const btn = document.getElementById('login-btn');
+  const msg = document.getElementById('login-msg');
+  btn.disabled = true;
+  btn.textContent = 'Enviando…';
+  try {
+    const { error } = await sb.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.href }
+    });
+    if (error) throw error;
+    msg.className = 'login-msg success';
+    msg.textContent = '✓ Magic link enviado — revisa tu email';
+  } catch(e) {
+    msg.className = 'login-msg error';
+    msg.textContent = '✗ Error: ' + e.message;
+    btn.disabled = false;
+    btn.textContent = 'Enviar magic link';
+  }
+}
+
+async function logout() {
+  if (sb) await sb.auth.signOut();
+}
+
+// ── SCREENS ──────────────────────────────────────────────
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+}
+
+// ── TABS ─────────────────────────────────────────────────
+function switchTab(name) {
+  currentTab = name;
+  document.querySelectorAll('.nav-tab').forEach((t, i) => {
+    t.classList.toggle('active', t.textContent.toLowerCase().includes(name.replace('dashboard','dashboard').replace('mantenimiento','mant').replace('alquiler','alquil').replace('compras','compra')) || t.getAttribute('onclick').includes("'"+name+"'"));
+  });
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  if (name !== 'dashboard') renderTable(name);
+}
+
+// ── LOAD DATA ────────────────────────────────────────────
+async function loadAllData() {
+  showLoading(true);
+  try {
+    const [mRes, aRes, cRes, dRes] = await Promise.all([
+      sb.from('gastos').select('*').eq('tipo','mantenimiento').order('fecha_envio',{ascending:false}),
+      sb.from('gastos').select('*').eq('tipo','alquiler').order('fecha_envio',{ascending:false}),
+      sb.from('gastos').select('*').eq('tipo','compra').order('fecha_envio',{ascending:false}),
+      sb.from('documentos').select('*'),
+    ]);
+    data.mantenimiento = mRes.data || [];
+    data.alquiler = aRes.data || [];
+    data.compras = cRes.data || [];
+
+    // Index docs by gasto_id
+    (dRes.data || []).forEach(d => {
+      if (!docs[d.gasto_id]) docs[d.gasto_id] = {};
+      docs[d.gasto_id][d.tipo] = d;
+    });
+
+    populateFilters();
+    updateDashboard();
+    if (currentTab !== 'dashboard') renderTable(currentTab);
+  } catch(e) {
+    toast('Error cargando datos: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+// ── POPULATE FILTERS ─────────────────────────────────────
+const filterMap = {
+  mantenimiento: { año:'filt-mant-año', mes:'filt-mant-mes', prod:'filt-mant-prod', prov:'filt-mant-prov', elem:'filt-mant-elem' },
+  alquiler:      { año:'filt-alq-año',  mes:'filt-alq-mes',  prod:'filt-alq-prod',  prov:'filt-alq-prov' },
+  compras:       { año:'filt-comp-año', mes:'filt-comp-mes', prod:'filt-comp-prod', prov:'filt-comp-prov' },
+};
+
+function populateFilters() {
+  ['mantenimiento','alquiler','compras'].forEach(tipo => {
+    const rows = data[tipo];
+    const fm = filterMap[tipo];
+    const uniq = (arr) => [...new Set(arr.filter(Boolean))].sort();
+
+    setOptions(fm.año, uniq(rows.map(r => r.año)));
+    setOptions(fm.mes, uniq(rows.map(r => r.mes)));
+    setOptions(fm.prod, uniq(rows.map(r => r.produccion)));
+    setOptions(fm.prov, uniq(rows.map(r => r.proveedor)));
+    if (fm.elem) setOptions(fm.elem, uniq(rows.map(r => r.elemento)));
+  });
+}
+
+function setOptions(id, values) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  const current = sel.value;
+  const first = sel.options[0];
+  sel.innerHTML = '';
+  sel.appendChild(first);
+  values.forEach(v => {
+    const o = document.createElement('option');
+    o.value = o.textContent = v;
+    sel.appendChild(o);
+  });
+  sel.value = current;
+}
+
+// ── GET FILTERED DATA ────────────────────────────────────
+function getFiltered(tipo) {
+  let rows = data[tipo] || [];
+  const fm = filterMap[tipo];
+
+  const año = document.getElementById(fm.año)?.value;
+  const mes = document.getElementById(fm.mes)?.value;
+  const prod = document.getElementById(fm.prod)?.value;
+  const prov = document.getElementById(fm.prov)?.value;
+  const elem = fm.elem ? document.getElementById(fm.elem)?.value : '';
+  const search = document.getElementById(`filt-${tipo.substring(0,4)}-search`)?.value.toLowerCase() ||
+                 document.getElementById(`filt-comp-search`)?.value.toLowerCase() || '';
+
+  if (año)  rows = rows.filter(r => String(r.año) === año);
+  if (mes)  rows = rows.filter(r => r.mes === mes);
+  if (prod) rows = rows.filter(r => r.produccion === prod);
+  if (prov) rows = rows.filter(r => r.proveedor === prov);
+  if (elem) rows = rows.filter(r => r.elemento === elem);
+  if (search) rows = rows.filter(r =>
+    (r.descripcion||'').toLowerCase().includes(search) ||
+    (r.elemento||'').toLowerCase().includes(search) ||
+    (r.code||'').toLowerCase().includes(search) ||
+    (r.num_pedido||'').toLowerCase().includes(search)
+  );
+
+  // Sort
+  const s = sort[tipo];
+  rows = [...rows].sort((a, b) => {
+    let va = a[s.col], vb = b[s.col];
+    if (va === null || va === undefined) return 1;
+    if (vb === null || vb === undefined) return -1;
+    if (typeof va === 'string') return s.dir * va.localeCompare(vb);
+    return s.dir * (va - vb);
+  });
+  return rows;
+}
+
+// ── RENDER TABLE ─────────────────────────────────────────
+function renderTable(tipo) {
+  const rows = getFiltered(tipo);
+  const page = pages[tipo] || 1;
+  const total = rows.length;
+  const paged = rows.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+
+  const badge = document.getElementById('badge-' + tipo);
+  badge.innerHTML = `<span>${total}</span> registros`;
+
+  // Totals
+  const sumCoste = rows.reduce((s,r) => s + (r.coste||0), 0);
+  const sumRefact = rows.reduce((s,r) => s + (r.refact||0), 0);
+  document.getElementById('totals-' + tipo).innerHTML = `
+    <div class="total-card">
+      <div class="total-label">Coste total</div>
+      <div class="total-value">${fmt(sumCoste)}</div>
+      <div class="total-sub">${total} registros filtrados</div>
+    </div>
+    <div class="total-card">
+      <div class="total-label">Total refacturado</div>
+      <div class="total-value">${fmt(sumRefact)}</div>
+      <div class="total-sub">${rows.filter(r=>r.refact).length} con refacturación</div>
+    </div>
+    <div class="total-card">
+      <div class="total-label">Sin documentos</div>
+      <div class="total-value" style="color:var(--red)">${rows.filter(r=>!docs[r.id]).length}</div>
+      <div class="total-sub">registros sin docs adjuntos</div>
+    </div>`;
+
+  const tbody = document.getElementById('tbody-' + tipo);
+  if (!paged.length) {
+    tbody.innerHTML = `<tr><td colspan="13">
+      <div class="empty-state">
+        <div class="empty-state-icon">🔍</div>
+        <div class="empty-state-text">Sin resultados</div>
+        <div class="empty-state-sub">Prueba con otros filtros</div>
+      </div>
+    </td></tr>`;
+    document.getElementById('pag-' + tipo).innerHTML = '';
+    return;
+  }
+
+  const isMant = tipo === 'mantenimiento';
+  tbody.innerHTML = paged.map(r => {
+    const d = docs[r.id] || {};
+    const hasPres = !!d.presupuesto;
+    const hasAlb = !!d.albaran;
+    const hasFact = !!d.factura;
+    return `<tr>
+      <td class="highlight">${fmtDate(r.fecha_envio)}</td>
+      <td><span class="badge-mes">${(r.mes||'').substring(0,3)}</span></td>
+      ${isMant ? `<td class="highlight">${r.code||''}</td>` : ''}
+      <td title="${r.elemento||''}">${r.elemento||''}</td>
+      <td title="${r.descripcion||''}" style="max-width:180px">${r.descripcion||''}</td>
+      <td title="${r.produccion||''}">${r.produccion||''}</td>
+      <td>${r.proveedor||''}</td>
+      <td class="num">${r.coste!=null ? fmt(r.coste) : '—'}</td>
+      <td class="num positive">${r.refact!=null ? fmt(r.refact) : '—'}</td>
+      <td style="font-size:10px;color:var(--text3)">${r.num_pedido||''}</td>
+      <td>
+        <div class="doc-status">
+          <span class="doc-pill ${hasPres?'has':'missing'}" title="${hasPres?'Ver presupuesto':'Subir presupuesto'}" onclick="openGastoModal('${r.id}','${tipo}')">PRE</span>
+          <span class="doc-pill ${hasAlb?'has':'missing'}" title="${hasAlb?'Ver albarán':'Subir albarán'}" onclick="openGastoModal('${r.id}','${tipo}')">ALB</span>
+          <span class="doc-pill ${hasFact?'has':'missing'}" title="${hasFact?'Ver factura':'Subir factura'}" onclick="openGastoModal('${r.id}','${tipo}')">FAC</span>
+        </div>
+      </td>
+      <td><span class="badge-dingo ${r.dingo?'yes':'no'}">${r.dingo?'✓':'✗'}</span></td>
+      <td>
+        <div class="row-actions">
+          <button class="btn-row" onclick="openGastoModal('${r.id}','${tipo}')">Editar</button>
+          <button class="btn-row danger" onclick="deleteGasto('${r.id}','${tipo}')">✕</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  renderPagination(tipo, total, page);
+}
+
+function renderPagination(tipo, total, page) {
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  if (totalPages <= 1) { document.getElementById('pag-' + tipo).innerHTML = ''; return; }
+  let html = '';
+  html += `<button class="page-btn" onclick="goPage('${tipo}',${page-1})" ${page===1?'disabled':''}>←</button>`;
+  for (let p = Math.max(1,page-2); p <= Math.min(totalPages,page+2); p++) {
+    html += `<button class="page-btn ${p===page?'current':''}" onclick="goPage('${tipo}',${p})">${p}</button>`;
+  }
+  html += `<button class="page-btn" onclick="goPage('${tipo}',${page+1})" ${page===totalPages?'disabled':''}>→</button>`;
+  html += `<span class="page-info">${(page-1)*PAGE_SIZE+1}–${Math.min(page*PAGE_SIZE,total)} de ${total}</span>`;
+  document.getElementById('pag-' + tipo).innerHTML = html;
+}
+
+function goPage(tipo, p) {
+  pages[tipo] = p;
+  renderTable(tipo);
+}
+
+// ── SORT ─────────────────────────────────────────────────
+function sortTable(tipo, col) {
+  if (sort[tipo].col === col) sort[tipo].dir *= -1;
+  else { sort[tipo].col = col; sort[tipo].dir = 1; }
+  renderTable(tipo);
+}
+
+// ── DASHBOARD ────────────────────────────────────────────
+function updateDashboard() {
+  const fmt2 = (n) => n.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  const sumRefact = (arr) => arr.reduce((s,r) => s+(r.refact||0), 0);
+  const sumCoste  = (arr) => arr.reduce((s,r) => s+(r.coste||0), 0);
+
+  document.getElementById('dash-mant-total').textContent = fmt2(sumRefact(data.mantenimiento));
+  document.getElementById('dash-mant-count').textContent = data.mantenimiento.length + ' registros';
+  document.getElementById('dash-alq-total').textContent = fmt2(sumRefact(data.alquiler));
+  document.getElementById('dash-alq-count').textContent = data.alquiler.length + ' registros';
+  document.getElementById('dash-comp-total').textContent = fmt2(sumRefact(data.compras));
+  document.getElementById('dash-comp-count').textContent = data.compras.length + ' registros';
+
+  const allRows = [...data.mantenimiento, ...data.alquiler, ...data.compras];
+  const sinDocs = allRows.filter(r => !docs[r.id]).length;
+  const sinRefact = allRows.filter(r => !r.refact).length;
+  const totalRefact = allRows.reduce((s,r)=>s+(r.refact||0),0);
+
+  document.getElementById('dash-docs-pending').textContent = sinDocs;
+  document.getElementById('dash-sin-refact').textContent = sinRefact;
+  document.getElementById('dash-total-refact').textContent = fmt2(totalRefact);
+
+  // Recent 10
+  const recent = allRows.sort((a,b) => (b.fecha_envio||'').localeCompare(a.fecha_envio||'')).slice(0,10);
+  if (recent.length) {
+    document.getElementById('dash-recent').innerHTML = `
+      <table class="data-table">
+        <thead><tr>
+          <th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Producción</th><th>Proveedor</th><th class="num">Coste</th><th class="num">Refact.</th>
+        </tr></thead>
+        <tbody>${recent.map(r=>`<tr>
+          <td class="highlight">${fmtDate(r.fecha_envio)}</td>
+          <td><span class="badge-mes">${r.tipo?.substring(0,4).toUpperCase()}</span></td>
+          <td title="${r.descripcion||''}">${r.descripcion||''}</td>
+          <td>${r.produccion||''}</td>
+          <td>${r.proveedor||''}</td>
+          <td class="num">${r.coste!=null?fmt(r.coste):'—'}</td>
+          <td class="num positive">${r.refact!=null?fmt(r.refact):'—'}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+  }
+}
+
+// ── MODAL: NEW/EDIT GASTO ────────────────────────────────
+function openNewGasto(tipo) {
+  editingId = null;
+  editingTipo = tipo;
+  document.getElementById('modal-gasto-title').textContent = 'Nuevo gasto';
+  document.getElementById('modal-gasto-sub').textContent = tipo.toUpperCase();
+  clearForm();
+  document.getElementById('docs-section').style.display = 'none';
+  openModal('gasto');
+}
+
+async function openGastoModal(id, tipo) {
+  editingId = id;
+  editingTipo = tipo;
+  const row = data[tipo]?.find(r => r.id === id);
+  if (!row) return;
+  document.getElementById('modal-gasto-title').textContent = 'Editar gasto';
+  document.getElementById('modal-gasto-sub').textContent = `${tipo.toUpperCase()} · ${row.num_pedido||''}`;
+  fillForm(row);
+  document.getElementById('docs-section').style.display = 'block';
+  loadDocNames(id);
+  openModal('gasto');
+}
+
+async function loadDocNames(gastoId) {
+  const d = docs[gastoId] || {};
+  for (const t of ['presupuesto','albaran','factura']) {
+    const el = document.getElementById('doc-' + t + '-name');
+    if (d[t]) {
+      // Generate fresh signed URL from storage_path
+      const storagePath = d[t].storage_path || d[t].url;
+      try {
+        const { data } = await sb.storage.from('documentos').createSignedUrl(storagePath, 60 * 60 * 24);
+        const url = data?.signedUrl || '';
+        el.innerHTML = `<a href="${url}" target="_blank" rel="noopener">📄 ${d[t].nombre_archivo}</a>`;
+      } catch(e) {
+        el.innerHTML = `<span style="color:var(--text3)">📄 ${d[t].nombre_archivo}</span>`;
+      }
+    } else {
+      el.textContent = '—';
+    }
+  }
+}
+
+async function uploadDoc(input, tipo) {
+  if (!input.files[0] || !editingId) return;
+  const file = input.files[0];
+  showLoading(true);
+  try {
+    const path = `${editingId}/${tipo}/${Date.now()}_${file.name}`;
+    const { error: upErr } = await sb.storage.from('documentos').upload(path, file);
+    if (upErr) throw upErr;
+    // Use signed URL (bucket is private)
+    const { data: signedData, error: signErr } = await sb.storage.from('documentos').createSignedUrl(path, 60 * 60 * 24 * 7); // 7 days
+    const signedUrl = signedData?.signedUrl || '';
+
+    // Upsert document record - store path, generate signed URL on demand
+    const existing = docs[editingId]?.[tipo];
+    if (existing) {
+      await sb.from('documentos').update({ nombre_archivo: file.name, storage_path: path, url: path }).eq('id', existing.id);
+    } else {
+      await sb.from('documentos').insert({ gasto_id: editingId, tipo, nombre_archivo: file.name, storage_path: path, url: path });
+    }
+    if (!docs[editingId]) docs[editingId] = {};
+    docs[editingId][tipo] = { nombre_archivo: file.name, storage_path: path, url: signedUrl };
+    loadDocNames(editingId);
+    toast(`${tipo.charAt(0).toUpperCase()+tipo.slice(1)} subido`, 'success');
+    renderTable(editingTipo);
+  } catch(e) {
+    toast('Error subiendo archivo: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+function clearForm() {
+  ['fecha-envio','fecha-recepcion','mes','code','elemento','descripcion','averia',
+   'produccion','proveedor','coste','refact','num-pedido','albaran','factura','notas'].forEach(f => {
+    const el = document.getElementById('f-' + f);
+    if (el) el.value = '';
+  });
+  document.getElementById('f-dingo').value = 'true';
+}
+
+function fillForm(r) {
+  document.getElementById('f-fecha-envio').value = r.fecha_envio || '';
+  document.getElementById('f-fecha-recepcion').value = r.fecha_recepcion || '';
+  document.getElementById('f-mes').value = r.mes || '';
+  document.getElementById('f-code').value = r.code || '';
+  document.getElementById('f-elemento').value = r.elemento || '';
+  document.getElementById('f-descripcion').value = r.descripcion || '';
+  document.getElementById('f-averia').value = r.averia || '';
+  document.getElementById('f-produccion').value = r.produccion || '';
+  document.getElementById('f-proveedor').value = r.proveedor || '';
+  document.getElementById('f-coste').value = r.coste != null ? r.coste : '';
+  document.getElementById('f-refact').value = r.refact != null ? r.refact : '';
+  document.getElementById('f-num-pedido').value = r.num_pedido || '';
+  document.getElementById('f-albaran').value = r.albaran_num || '';
+  document.getElementById('f-factura').value = r.factura_num || '';
+  document.getElementById('f-notas').value = r.notas || '';
+  document.getElementById('f-dingo').value = r.dingo ? 'true' : 'false';
+}
+
+async function saveGasto() {
+  const btn = document.getElementById('btn-save-gasto');
+  btn.disabled = true;
+  try {
+    const payload = {
+      tipo: editingTipo === 'compras' ? 'compra' : editingTipo,
+      fecha_envio: document.getElementById('f-fecha-envio').value || null,
+      fecha_recepcion: document.getElementById('f-fecha-recepcion').value || null,
+      mes: document.getElementById('f-mes').value || null,
+      code: document.getElementById('f-code').value || null,
+      elemento: document.getElementById('f-elemento').value || null,
+      descripcion: document.getElementById('f-descripcion').value || null,
+      averia: document.getElementById('f-averia').value || null,
+      produccion: document.getElementById('f-produccion').value || null,
+      proveedor: document.getElementById('f-proveedor').value || null,
+      coste: parseFloat(document.getElementById('f-coste').value) || null,
+      refact: parseFloat(document.getElementById('f-refact').value) || null,
+      num_pedido: document.getElementById('f-num-pedido').value || null,
+      albaran_num: document.getElementById('f-albaran').value || null,
+      factura_num: document.getElementById('f-factura').value || null,
+      notas: document.getElementById('f-notas').value || null,
+      dingo: document.getElementById('f-dingo').value === 'true',
+      created_by: currentUser?.id,
+    };
+    let res;
+    if (editingId) {
+      res = await sb.from('gastos').update(payload).eq('id', editingId).select().single();
+      if (res.error) throw res.error;
+      const idx = data[editingTipo].findIndex(r => r.id === editingId);
+      if (idx >= 0) data[editingTipo][idx] = res.data;
+    } else {
+      res = await sb.from('gastos').insert(payload).select().single();
+      if (res.error) throw res.error;
+      data[editingTipo].unshift(res.data);
+    }
+    populateFilters();
+    renderTable(editingTipo);
+    updateDashboard();
+    closeModal('gasto');
+    toast('Guardado correctamente', 'success');
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function deleteGasto(id, tipo) {
+  if (!confirm('¿Eliminar este registro?')) return;
+  try {
+    const { error } = await sb.from('gastos').delete().eq('id', id);
+    if (error) throw error;
+    data[tipo] = data[tipo].filter(r => r.id !== id);
+    delete docs[id];
+    renderTable(tipo);
+    updateDashboard();
+    toast('Eliminado', 'info');
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+// ── IMPORT ───────────────────────────────────────────────
+function openImport() { openModal('import'); }
+
+function handleImportDrop(e) {
+  e.preventDefault();
+  document.getElementById('import-zone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) processImportFile(file);
+}
+function handleImportFile(input) {
+  if (input.files[0]) processImportFile(input.files[0]);
+}
+
+async function processImportFile(file) {
+  const status = document.getElementById('import-status');
+  status.textContent = 'Leyendo fichero…';
+  try {
+    const ab = await file.arrayBuffer();
+    const wb = XLSX.read(ab);
+    const sheetMap = {
+      'MATENIMIENTO': 'mantenimiento',
+      'MANTENIMIENTO': 'mantenimiento',
+      'ALQUILER': 'alquiler',
+      'COMPRAS': 'compras',
+    };
+    let totalImported = 0;
+    for (const [sheetName, tipo] of Object.entries(sheetMap)) {
+      const ws = wb.Sheets[sheetName];
+      if (!ws) continue;
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: null });
+      status.textContent = `Importando ${sheetName}… (${rows.length} filas)`;
+      const payload = rows.filter(r => r['DESCRIPCIÓN'] || r['SESCRIPCIÓN']).map(r => ({
+        tipo: tipo === 'compras' ? 'compra' : tipo,
+        fecha_envio: excelDateToISO(r['FECHA ENVÍO']),
+        fecha_recepcion: excelDateToISO(r['FECHA RECEPCIÓN']),
+        año: r['AÑO'] ? parseInt(r['AÑO']) : null,
+        mes: r['MES'] || null,
+        code: r['CODE'] != null ? String(r['CODE']) : null,
+        elemento: r['ELEMENTO'] || null,
+        descripcion: r['DESCRIPCIÓN'] || r['SESCRIPCIÓN'] || null,
+        averia: r['AVERÍA'] || null,
+        produccion: r['PRODUCCIÓN'] || null,
+        proveedor: r['PROVEEDOR'] || null,
+        coste: parseNum(r['COSTE']),
+        refact: parseNum(r['REFACT.']),
+        albaran_num: r['ALBARÁN'] ? String(r['ALBARÁN']) : null,
+        factura_num: r['FACTURA'] ? String(r['FACTURA']) : null,
+        num_pedido: r['NÚM PEDIDO'] ? String(r['NÚM PEDIDO']) : null,
+        dingo: r['DINGO'] === 'DINGO',
+        created_by: currentUser?.id,
+      }));
+      if (payload.length) {
+        const { error, count } = await sb.from('gastos').upsert(payload, { onConflict: 'tipo,num_pedido,code,descripcion', ignoreDuplicates: true });
+        if (error) throw error;
+        totalImported += payload.length;
+      }
+    }
+    status.style.color = 'var(--green)';
+    status.textContent = `✓ Importación completada. ${totalImported} registros procesados.`;
+    await loadAllData();
+    if (currentTab !== 'dashboard') renderTable(currentTab);
+  } catch(e) {
+    status.style.color = 'var(--red)';
+    status.textContent = '✗ Error: ' + e.message;
+  }
+}
+
+function excelDateToISO(v) {
+  if (!v) return null;
+  if (typeof v === 'number') {
+    const date = new Date(Math.round((v - 25569) * 86400 * 1000));
+    return date.toISOString().split('T')[0];
+  }
+  if (typeof v === 'string' && v.match(/\d{4}/)) return v;
+  return null;
+}
+
+function parseNum(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = parseFloat(String(v).replace(',','.'));
+  return isNaN(n) ? null : n;
+}
+
+// ── MODALS ───────────────────────────────────────────────
+function openModal(name) {
+  document.getElementById('modal-' + name).classList.add('open');
+}
+function closeModal(name) {
+  document.getElementById('modal-' + name).classList.remove('open');
+}
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) closeModal(el.id.replace('modal-','')); });
+});
+
+// ── TOAST ────────────────────────────────────────────────
+function toast(msg, type='info') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(() => {
+    el.style.animation = 'toast-out .3s ease forwards';
+    setTimeout(() => el.remove(), 300);
+  }, 3500);
+}
+
+// ── LOADING ──────────────────────────────────────────────
+function showLoading(v) {
+  document.getElementById('loading').classList.toggle('open', v);
+}
+
+// ── FORMAT UTILS ─────────────────────────────────────────
+function fmt(n) {
+  if (n == null) return '—';
+  return n.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+}
+function fmtDate(d) {
+  if (!d) return '—';
+  const p = d.split('-');
+  if (p.length === 3) return `${p[2]}/${p[1]}/${p[0].slice(2)}`;
+  return d;
+}
+
+// ── KEYBOARD ─────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+});
+
+// ── DRAG AND DROP DOCS ───────────────────────────────────
+function handleDragOver(e, tipo) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.add('drag-over');
+}
+function handleDragLeave(e, tipo) {
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.remove('drag-over');
+}
+function handleDrop(e, tipo) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('drop-' + tipo).classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const fakeInput = { files: [file] };
+  uploadDoc(fakeInput, tipo);
+}
+
+</script>
+</body>
+</html>
