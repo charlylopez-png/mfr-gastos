@@ -717,7 +717,16 @@ async function sendMagicLink() {
     const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
     if (error) throw error;
     msg.className = 'login-msg success'; msg.textContent = 'Magic link enviado - revisa tu email';
-  } catch(e) { msg.className = 'login-msg error'; msg.textContent = 'Error: ' + e.message; btn.disabled = false; btn.textContent = 'Enviar magic link'; }
+  } catch(e) {
+    msg.className = 'login-msg error';
+    const m = (e.message||'').toLowerCase();
+    if (m.includes('signups not allowed') || m.includes('signup') || m.includes('not found')) {
+      msg.textContent = 'Este email no tiene acceso. Pide al administrador que te invite.';
+    } else {
+      msg.textContent = 'Error: ' + e.message;
+    }
+    btn.disabled = false; btn.textContent = 'Enviar magic link';
+  }
 }
 async function loginWithPassword() {
   const email = document.getElementById('login-email').value.trim(), pass = document.getElementById('login-pass').value;
