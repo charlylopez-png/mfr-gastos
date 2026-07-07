@@ -1408,6 +1408,7 @@ function updateDashboard(){
   set('dash-docs-pending',allData.filter(function(r){return !r.documentos||!r.documentos.length}).length);
   set('dash-sin-refact',allData.filter(function(r){return r.refact==null||r.refact===''}).length);
   set('dash-sin-pedido',allData.filter(function(r){return !r.num_pedido&&!r.nombre_pedido}).length);
+}
 function gotoPendingDocs(){const now=new Date(),y=String(now.getFullYear());showDashFilter('Docs pendientes - '+y,[...data.mantenimiento,...data.alquiler,...data.compras].filter(function(r){return String(r.ano||r['año'])===y&&(!docs[r.id]||(!docs[r.id].presupuesto&&!docs[r.id].albaran&&!docs[r.id].factura))}));}
 function gotoSinRefact(){const now=new Date(),y=String(now.getFullYear());showDashFilter('Sin refacturar - '+y,[...data.mantenimiento,...data.alquiler,...data.compras].filter(function(r){return String(r.ano||r['año'])===y&&!r.refact}));}
 function gotoSinNumPedido(){const now=new Date(),y=String(now.getFullYear());showDashFilter('Sin num. pedido - '+y,[...data.mantenimiento,...data.alquiler,...data.compras].filter(function(r){return String(r.ano||r['año'])===y&&!r.num_pedido&&!r.nombre_pedido}));}
