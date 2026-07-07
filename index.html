@@ -186,8 +186,36 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14
 .prod-subheader td{background:rgba(224,123,57,.04);font-family:var(--mono);font-size:10px;color:var(--amber);letter-spacing:1px;text-transform:uppercase;padding:5px 12px 5px 28px;border-bottom:1px solid var(--border)}
 .group-rows td{padding-left:28px!important}
 /* DASHBOARD */
-.dashboard-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
-.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;box-shadow:var(--shadow-sm)}
+.dashboard-section-label{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin:0 0 10px;padding-left:2px}
+.dashboard-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px}
+.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px 22px;box-shadow:var(--shadow-sm);position:relative;overflow:hidden;transition:box-shadow .2s,transform .15s}
+.stat-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
+.stat-card-accent{position:absolute;top:0;left:0;right:0;height:3px;border-radius:var(--radius-lg) var(--radius-lg) 0 0}
+.stat-card-icon{position:absolute;top:16px;right:16px;font-size:20px;opacity:.15}
+.stat-card-module{font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px}
+.stat-card-cost{font-family:var(--mono);font-size:22px;font-weight:700;line-height:1;margin-bottom:10px;letter-spacing:-.5px}
+.stat-card-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border-top:1px solid var(--border);padding-top:10px;margin-top:2px}
+.stat-card-metric{display:flex;flex-direction:column;gap:2px;padding:0 6px}
+.stat-card-metric:first-child{padding-left:0}
+.stat-card-metric:last-child{padding-right:0}
+.stat-card-metric+.stat-card-metric{border-left:1px solid var(--border)}
+.stat-metric-label{font-family:var(--mono);font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);font-weight:500}
+.stat-metric-val{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--text2)}
+.stat-metric-val.positive{color:var(--green)}
+.stat-metric-val.negative{color:var(--red)}
+.stat-metric-val.negative{color:var(--red)}
+.stat-card-sub{font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:8px}
+/* Total card */
+.stat-card-total{grid-column:span 1;background:var(--bg3)}
+.stat-card-total .stat-metric-label{color:var(--text3)}
+/* Alert cards row */
+.dashboard-alerts{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:8px}
+.alert-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;box-shadow:var(--shadow-sm);cursor:pointer;transition:box-shadow .2s,transform .15s;display:flex;align-items:center;gap:14px}
+.alert-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
+.alert-card-num{font-family:var(--mono);font-size:32px;font-weight:700;line-height:1;flex-shrink:0}
+.alert-card-info{flex:1}
+.alert-card-label{font-family:var(--sans);font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px}
+.alert-card-sub{font-family:var(--mono);font-size:10px;color:var(--text3)}
 .stat-label{font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px}
 .stat-value{font-family:var(--mono);font-size:28px;font-weight:600;color:var(--amber);font-variant-numeric:tabular-nums;line-height:1;margin-bottom:4px}
 .stat-sub{font-family:var(--mono);font-size:11px;color:var(--text3)}
@@ -328,38 +356,156 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14
 
     <!-- DASHBOARD -->
     <div class="panel active" id="panel-dashboard">
-      <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px">Año en curso</div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
-        <div class="stat-card mant"><div class="stat-label">Mant. anual</div><div class="stat-value" id="dash-mant-anual">--</div><div style="display:flex;gap:8px;margin-top:4px;font-family:var(--mono);font-size:11px"><span style="color:var(--text3)">R: <span id="dash-mant-anual-r" style="color:var(--green)">--</span></span><span style="color:var(--text3)">D: <span id="dash-mant-anual-d">--</span></span></div><div class="stat-sub" id="dash-mant-anual-sub">--</div></div>
-        <div class="stat-card alq"><div class="stat-label">Alq. anual</div><div class="stat-value" id="dash-alq-anual">--</div><div style="display:flex;gap:8px;margin-top:4px;font-family:var(--mono);font-size:11px"><span style="color:var(--text3)">R: <span id="dash-alq-anual-r" style="color:var(--green)">--</span></span><span style="color:var(--text3)">D: <span id="dash-alq-anual-d">--</span></span></div><div class="stat-sub" id="dash-alq-anual-sub">--</div></div>
-        <div class="stat-card comp"><div class="stat-label">Comp. anual</div><div class="stat-value" id="dash-comp-anual">--</div><div style="display:flex;gap:8px;margin-top:4px;font-family:var(--mono);font-size:11px"><span style="color:var(--text3)">R: <span id="dash-comp-anual-r" style="color:var(--green)">--</span></span><span style="color:var(--text3)">D: <span id="dash-comp-anual-d">--</span></span></div><div class="stat-sub" id="dash-comp-anual-sub">--</div></div>
-        <div class="stat-card" style="border-top:3px solid var(--text3)"><div class="stat-label">Coste / Refact. / Dif. anual</div>
-          <div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;margin-top:4px">
-            <div><div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Coste</div><div style="font-family:var(--mono);font-size:14px;font-weight:600;color:var(--text)" id="dash-coste-anual">--</div></div>
-            <div><div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Refact.</div><div style="font-family:var(--mono);font-size:14px;font-weight:600;color:var(--green)" id="dash-refact-anual">--</div></div>
-            <div><div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Dif.</div><div style="font-family:var(--mono);font-size:14px;font-weight:600" id="dash-dif-anual">--</div></div>
-          </div></div>
+
+      <!-- AÑO EN CURSO -->
+      <div class="dashboard-section-label">Año en curso</div>
+      <div class="dashboard-grid">
+
+        <div class="stat-card" onclick="switchTab('mantenimiento')" style="cursor:pointer">
+          <div class="stat-card-accent" style="background:linear-gradient(90deg,#7c5cfc,#a78bfa)"></div>
+          <div class="stat-card-icon">🔧</div>
+          <div class="stat-card-module" style="color:#7c5cfc">Mantenimiento</div>
+          <div class="stat-card-cost" style="color:#7c5cfc" id="dash-mant-anual">--</div>
+          <div class="stat-card-row">
+            <div class="stat-card-metric"><span class="stat-metric-label">Coste</span><span class="stat-metric-val" id="dash-mant-anual-c">--</span></div>
+            <div class="stat-card-metric"><span class="stat-metric-label">Refact.</span><span class="stat-metric-val positive" id="dash-mant-anual-r">--</span></div>
+            <div class="stat-card-metric"><span class="stat-metric-label">Dif.</span><span class="stat-metric-val" id="dash-mant-anual-d">--</span></div>
+          </div>
+          <div class="stat-card-sub" id="dash-mant-anual-sub">--</div>
+        </div>
+
+        <div class="stat-card" onclick="switchTab('alquiler')" style="cursor:pointer">
+          <div class="stat-card-accent" style="background:linear-gradient(90deg,#2563eb,#60a5fa)"></div>
+          <div class="stat-card-icon">📦</div>
+          <div class="stat-card-module" style="color:#2563eb">Alquileres</div>
+          <div class="stat-card-cost" style="color:#2563eb" id="dash-alq-anual">--</div>
+          <div class="stat-card-row">
+            <div class="stat-card-metric"><span class="stat-metric-label">Coste</span><span class="stat-metric-val" id="dash-alq-anual-c">--</span></div>
+            <div class="stat-card-metric"><span class="stat-metric-label">Refact.</span><span class="stat-metric-val positive" id="dash-alq-anual-r">--</span></div>
+            <div class="stat-card-metric"><span class="stat-metric-label">Dif.</span><span class="stat-metric-val" id="dash-alq-anual-d">--</span></div>
+          </div>
+          <div class="stat-card-sub" id="dash-alq-anual-sub">--</div>
+        </div>
+
+        <div class="stat-card" onclick="switchTab('compras')" style="cursor:pointer">
+          <div class="stat-card-accent" style="background:linear-gradient(90deg,#16a34a,#34d399)"></div>
+          <div class="stat-card-icon">🛒</div>
+          <div class="stat-card-module" style="color:#16a34a">Compras</div>
+          <div class="stat-card-cost" style="color:#16a34a" id="dash-comp-anual">--</div>
+          <div class="stat-card-row">
+            <div class="stat-card-metric"><span class="stat-metric-label">Coste</span><span class="stat-metric-val" id="dash-comp-anual-c">--</span></div>
+            <div class="stat-card-metric"><span class="stat-metric-label">Refact.</span><span class="stat-metric-val positive" id="dash-comp-anual-r">--</span></div>
+            <div class="stat-card-metric"><span class="stat-metric-label">Dif.</span><span class="stat-metric-val" id="dash-comp-anual-d">--</span></div>
+          </div>
+          <div class="stat-card-sub" id="dash-comp-anual-sub">--</div>
+        </div>
+
+        <div class="stat-card" style="background:var(--bg3)">
+          <div class="stat-card-accent" style="background:linear-gradient(90deg,var(--text3),var(--border2))"></div>
+          <div class="stat-card-icon">📊</div>
+          <div class="stat-card-module" style="color:var(--text3)">Total anual</div>
+          <div class="stat-card-cost" style="color:var(--text)" id="dash-total-anual-c">--</div>
+          <div class="stat-card-row">
+            <div class="stat-card-metric"><span class="stat-metric-label">Coste</span><span class="stat-metric-val" id="dash-total-anual-cc">--</span></div>
+            <div class="stat-card-metric"><span class="stat-metric-label">Refact.</span><span class="stat-metric-val positive" id="dash-total-anual-r">--</span></div>
+            <div class="stat-card-metric"><span class="stat-metric-label">Dif.</span><span class="stat-metric-val" id="dash-total-anual-d">--</span></div>
+          </div>
+          <div class="stat-card-sub" id="dash-total-anual-sub">3 módulos</div>
+        </div>
+
       </div>
-      <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px">Mes en curso</div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
-        <div class="stat-card mant"><div class="stat-label">Mant. mes</div><div class="stat-value" id="dash-mant-mes">--</div><div style="display:flex;gap:8px;margin-top:4px;font-family:var(--mono);font-size:11px"><span style="color:var(--text3)">R: <span id="dash-mant-mes-r" style="color:var(--green)">--</span></span><span style="color:var(--text3)">D: <span id="dash-mant-mes-d">--</span></span></div><div class="stat-sub" id="dash-mant-mes-sub">--</div></div>
-        <div class="stat-card alq"><div class="stat-label">Alq. mes</div><div class="stat-value" id="dash-alq-mes">--</div><div style="display:flex;gap:8px;margin-top:4px;font-family:var(--mono);font-size:11px"><span style="color:var(--text3)">R: <span id="dash-alq-mes-r" style="color:var(--green)">--</span></span><span style="color:var(--text3)">D: <span id="dash-alq-mes-d">--</span></span></div><div class="stat-sub" id="dash-alq-mes-sub">--</div></div>
-        <div class="stat-card comp"><div class="stat-label">Comp. mes</div><div class="stat-value" id="dash-comp-mes">--</div><div style="display:flex;gap:8px;margin-top:4px;font-family:var(--mono);font-size:11px"><span style="color:var(--text3)">R: <span id="dash-comp-mes-r" style="color:var(--green)">--</span></span><span style="color:var(--text3)">D: <span id="dash-comp-mes-d">--</span></span></div><div class="stat-sub" id="dash-comp-mes-sub">--</div></div>
-        <div class="stat-card" style="border-top:3px solid var(--text3)"><div class="stat-label">Coste / Refact. / Dif. mes</div>
-          <div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;margin-top:4px">
-            <div><div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Coste</div><div style="font-family:var(--mono);font-size:14px;font-weight:600;color:var(--text)" id="dash-coste-mes">--</div></div>
-            <div><div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Refact.</div><div style="font-family:var(--mono);font-size:14px;font-weight:600;color:var(--green)" id="dash-refact-mes">--</div></div>
-            <div><div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Dif.</div><div style="font-family:var(--mono);font-size:14px;font-weight:600" id="dash-dif-mes">--</div></div>
-          </div></div>
+
+      <!-- MES EN CURSO -->
+      <div class="dashboard-section-label">Mes en curso</div>
+      <div class="dashboard-grid">
+
+        <div class="stat-card" onclick="switchTab('mantenimiento')" style="cursor:pointer">
+          <div class="stat-card-accent" style="background:linear-gradient(90deg,#7c5cfc,#a78bfa)"></div>
+          <div class="stat-card-icon">🔧</div>
+          <div class="stat-card-module" style="color:#7c5cfc">Mantenimiento</div>
+          <div class="stat-card-cost" style="color:#7c5cfc" id="dash-mant-mes">--</div>
+          <div class="stat-card-row">
+            <div class="stat-card-metric"><span class="stat-metric-label">Coste</span><span class="stat-metric-val" id="dash-mant-mes-c">--</span></div>
+            <div class="stat-card-metric"><span class="stat-metric-label">Refact.</span><span class="stat-metric-val positive" id="dash-mant-mes-r">--</span></div>
+            <div class="stat-card-metric"><span class="stat-metric-label">Dif.</span><span class="stat-metric-val" id="dash-mant-mes-d">--</span></div>
+          </div>
+          <div class="stat-card-sub" id="dash-mant-mes-sub">--</div>
+        </div>
+
+        <div class="stat-card" onclick="switchTab('alquiler')" style="cursor:pointer">
+          <div class="stat-card-accent" style="background:linear-gradient(90deg,#2563eb,#60a5fa)"></div>
+          <div class="stat-card-icon">📦</div>
+          <div class="stat-card-module" style="color:#2563eb">Alquileres</div>
+          <div class="stat-card-cost" style="color:#2563eb" id="dash-alq-mes">--</div>
+          <div class="stat-card-row">
+            <div class="stat-card-metric"><span class="stat-metric-label">Coste</span><span class="stat-metric-val" id="dash-alq-mes-c">--</span></div>
+            <div class="stat-card-metric"><span class="stat-metric-label">Refact.</span><span class="stat-metric-val positive" id="dash-alq-mes-r">--</span></div>
+            <div class="stat-card-metric"><span class="stat-metric-label">Dif.</span><span class="stat-metric-val" id="dash-alq-mes-d">--</span></div>
+          </div>
+          <div class="stat-card-sub" id="dash-alq-mes-sub">--</div>
+        </div>
+
+        <div class="stat-card" onclick="switchTab('compras')" style="cursor:pointer">
+          <div class="stat-card-accent" style="background:linear-gradient(90deg,#16a34a,#34d399)"></div>
+          <div class="stat-card-icon">🛒</div>
+          <div class="stat-card-module" style="color:#16a34a">Compras</div>
+          <div class="stat-card-cost" style="color:#16a34a" id="dash-comp-mes">--</div>
+          <div class="stat-card-row">
+            <div class="stat-card-metric"><span class="stat-metric-label">Coste</span><span class="stat-metric-val" id="dash-comp-mes-c">--</span></div>
+            <div class="stat-card-metric"><span class="stat-metric-label">Refact.</span><span class="stat-metric-val positive" id="dash-comp-mes-r">--</span></div>
+            <div class="stat-card-metric"><span class="stat-metric-label">Dif.</span><span class="stat-metric-val" id="dash-comp-mes-d">--</span></div>
+          </div>
+          <div class="stat-card-sub" id="dash-comp-mes-sub">--</div>
+        </div>
+
+        <div class="stat-card" style="background:var(--bg3)">
+          <div class="stat-card-accent" style="background:linear-gradient(90deg,var(--text3),var(--border2))"></div>
+          <div class="stat-card-icon">📊</div>
+          <div class="stat-card-module" style="color:var(--text3)">Total mes</div>
+          <div class="stat-card-cost" style="color:var(--text)" id="dash-total-mes-c">--</div>
+          <div class="stat-card-row">
+            <div class="stat-card-metric"><span class="stat-metric-label">Coste</span><span class="stat-metric-val" id="dash-total-mes-cc">--</span></div>
+            <div class="stat-card-metric"><span class="stat-metric-label">Refact.</span><span class="stat-metric-val positive" id="dash-total-mes-r">--</span></div>
+            <div class="stat-card-metric"><span class="stat-metric-label">Dif.</span><span class="stat-metric-val" id="dash-total-mes-d">--</span></div>
+          </div>
+          <div class="stat-card-sub" id="dash-total-mes-sub">mes actual</div>
+        </div>
+
       </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
-        <div class="stat-card" style="cursor:pointer;transition:box-shadow .2s" onclick="gotoPendingDocs()" onmouseenter="this.style.boxShadow='var(--shadow-md)'" onmouseleave="this.style.boxShadow=''"><div class="stat-label">Docs pendientes (anual)</div><div class="stat-value" id="dash-docs-pending" style="color:var(--red)">--</div><div class="stat-sub">sin docs · clic para ver</div></div>
-        <div class="stat-card" style="cursor:pointer;transition:box-shadow .2s" onclick="gotoSinRefact()" onmouseenter="this.style.boxShadow='var(--shadow-md)'" onmouseleave="this.style.boxShadow=''"><div class="stat-label">Sin refacturar (anual)</div><div class="stat-value" id="dash-sin-refact" style="color:var(--yellow)">--</div><div class="stat-sub">refact. vacio · clic para ver</div></div>
-        <div class="stat-card" style="cursor:pointer;transition:box-shadow .2s" onclick="gotoSinNumPedido()" onmouseenter="this.style.boxShadow='var(--shadow-md)'" onmouseleave="this.style.boxShadow=''"><div class="stat-label">Sin num. pedido (anual)</div><div class="stat-value" id="dash-sin-pedido" style="color:var(--blue)">--</div><div class="stat-sub">sin numero · clic para ver</div></div>
+
+      <!-- ALERTAS -->
+      <div class="dashboard-section-label">Atención</div>
+      <div class="dashboard-alerts">
+        <div class="alert-card" onclick="gotoPendingDocs()">
+          <div class="alert-card-num" id="dash-docs-pending" style="color:var(--red)">--</div>
+          <div class="alert-card-info">
+            <div class="alert-card-label">Sin documentos</div>
+            <div class="alert-card-sub">registros sin docs adjuntos</div>
+          </div>
+          <div style="font-size:22px">📎</div>
+        </div>
+        <div class="alert-card" onclick="gotoSinRefact()">
+          <div class="alert-card-num" id="dash-sin-refact" style="color:var(--yellow)">--</div>
+          <div class="alert-card-info">
+            <div class="alert-card-label">Sin refacturar</div>
+            <div class="alert-card-sub">refacturación vacía</div>
+          </div>
+          <div style="font-size:22px">💸</div>
+        </div>
+        <div class="alert-card" onclick="gotoSinNumPedido()">
+          <div class="alert-card-num" id="dash-sin-pedido" style="color:var(--blue)">--</div>
+          <div class="alert-card-info">
+            <div class="alert-card-label">Sin nº pedido</div>
+            <div class="alert-card-sub">sin número SAP asignado</div>
+          </div>
+          <div style="font-size:22px">🔢</div>
+        </div>
       </div>
+
+      <!-- RECENT -->
+      <div class="dashboard-section-label" style="margin-top:8px">Últimos movimientos</div>
       <div class="table-wrapper" id="dash-recent"></div>
     </div>
-
     <!-- MANTENIMIENTO -->
     <div class="panel" id="panel-mantenimiento">
       <div class="totals-bar" id="totals-mantenimiento"></div>
@@ -1241,66 +1387,27 @@ function updateDashboard(){
   const mantY=byYear(data.mantenimiento),alqY=byYear(data.alquiler),compY=byYear(data.compras),allY=byYear(all);
   const mantM=byMes(data.mantenimiento),alqM=byMes(data.alquiler),compM=byMes(data.compras),allM=byMes(all);
   const set=function(id,v){const el=document.getElementById(id);if(el)el.textContent=v;};
+  const setDif=function(id,val){const el=document.getElementById(id);if(!el)return;el.textContent=(val>=0?'+':'')+f2(val);el.className='stat-metric-val'+(val>=0?' positive':' negative');};
+
   // ANUAL
-  set('dash-mant-anual',f2(sc(mantY)));const dMA=sr(mantY)-sc(mantY);set('dash-mant-anual-r',f2(sr(mantY)));set('dash-mant-anual-d',(dMA>=0?'+':'')+f2(dMA));const elMA=document.getElementById('dash-mant-anual-d');if(elMA)elMA.style.color=dMA>=0?'var(--green)':'var(--red)';set('dash-mant-anual-sub',mantY.length+' registros');
-  set('dash-alq-anual',f2(sc(alqY)));const dAA=sr(alqY)-sc(alqY);set('dash-alq-anual-r',f2(sr(alqY)));set('dash-alq-anual-d',(dAA>=0?'+':'')+f2(dAA));const elAA=document.getElementById('dash-alq-anual-d');if(elAA)elAA.style.color=dAA>=0?'var(--green)':'var(--red)';set('dash-alq-anual-sub',alqY.length+' registros');
-  set('dash-comp-anual',f2(sc(compY)));const dCA=sr(compY)-sc(compY);set('dash-comp-anual-r',f2(sr(compY)));set('dash-comp-anual-d',(dCA>=0?'+':'')+f2(dCA));const elCA=document.getElementById('dash-comp-anual-d');if(elCA)elCA.style.color=dCA>=0?'var(--green)':'var(--red)';set('dash-comp-anual-sub',compY.length+' registros');
-  const tcY=sc(allY),trY=sr(allY),difY=trY-tcY;
-  set('dash-coste-anual',f2(tcY));set('dash-refact-anual',f2(trY));
-  set('dash-dif-anual',(difY>=0?'+':'')+f2(difY));
-  const dA=document.getElementById('dash-dif-anual');if(dA)dA.style.color=difY>=0?'var(--green)':'var(--red)';
+  set('dash-mant-anual',f2(sc(mantY)));set('dash-mant-anual-c',f2(sc(mantY)));set('dash-mant-anual-r',f2(sr(mantY)));setDif('dash-mant-anual-d',sr(mantY)-sc(mantY));set('dash-mant-anual-sub',mantY.length+' registros');
+  set('dash-alq-anual',f2(sc(alqY)));set('dash-alq-anual-c',f2(sc(alqY)));set('dash-alq-anual-r',f2(sr(alqY)));setDif('dash-alq-anual-d',sr(alqY)-sc(alqY));set('dash-alq-anual-sub',alqY.length+' registros');
+  set('dash-comp-anual',f2(sc(compY)));set('dash-comp-anual-c',f2(sc(compY)));set('dash-comp-anual-r',f2(sr(compY)));setDif('dash-comp-anual-d',sr(compY)-sc(compY));set('dash-comp-anual-sub',compY.length+' registros');
+  const tcY=sc(allY),trY=sr(allY),tdY=trY-tcY;
+  set('dash-total-anual-c',f2(tdY));set('dash-total-anual-cc',f2(tcY));set('dash-total-anual-r',f2(trY));setDif('dash-total-anual-d',tdY);set('dash-total-anual-sub',allY.length+' registros');
+
   // MES
-  set('dash-mant-mes',f2(sc(mantM)));const dMM=sr(mantM)-sc(mantM);set('dash-mant-mes-r',f2(sr(mantM)));set('dash-mant-mes-d',(dMM>=0?'+':'')+f2(dMM));const elMM=document.getElementById('dash-mant-mes-d');if(elMM)elMM.style.color=dMM>=0?'var(--green)':'var(--red)';set('dash-mant-mes-sub',mantM.length+' registros');
-  set('dash-alq-mes',f2(sc(alqM)));const dAM=sr(alqM)-sc(alqM);set('dash-alq-mes-r',f2(sr(alqM)));set('dash-alq-mes-d',(dAM>=0?'+':'')+f2(dAM));const elAM=document.getElementById('dash-alq-mes-d');if(elAM)elAM.style.color=dAM>=0?'var(--green)':'var(--red)';set('dash-alq-mes-sub',alqM.length+' registros');
-  set('dash-comp-mes',f2(sc(compM)));const dCM=sr(compM)-sc(compM);set('dash-comp-mes-r',f2(sr(compM)));set('dash-comp-mes-d',(dCM>=0?'+':'')+f2(dCM));const elCM=document.getElementById('dash-comp-mes-d');if(elCM)elCM.style.color=dCM>=0?'var(--green)':'var(--red)';set('dash-comp-mes-sub',compM.length+' registros');
-  const tcM=sc(allM),trM=sr(allM),difM=trM-tcM;
-  set('dash-coste-mes',f2(tcM));set('dash-refact-mes',f2(trM));
-  set('dash-dif-mes',(difM>=0?'+':'')+f2(difM));
-  const dM=document.getElementById('dash-dif-mes');if(dM)dM.style.color=difM>=0?'var(--green)':'var(--red)';
-  // ACTION BOXES
-  const sinDocs=allY.filter(function(r){return!docs[r.id]||(!docs[r.id].presupuesto&&!docs[r.id].albaran&&!docs[r.id].factura)}).length;
-  const sinRefact=allY.filter(function(r){return!r.refact}).length;
-  const sinNumPedido=allY.filter(function(r){return!r.num_pedido&&!r.nombre_pedido}).length;
-  set('dash-docs-pending',sinDocs);set('dash-sin-refact',sinRefact);set('dash-sin-pedido',sinNumPedido);
-  // TABLE
-  const allSorted=[...allY].sort(function(a,b){return (b.fecha_envio||'').localeCompare(a.fecha_envio||'')});
-  const byPedido={};
-  allSorted.forEach(function(r){
-    const k=r.nombre_pedido||(r.num_pedido?r.num_pedido:('_solo_'+r.id));
-    if(!byPedido[k])byPedido[k]={rows:[],tipo:r.tipo,proveedor:r.proveedor,numPedido:r.num_pedido,nombre:r.nombre_pedido};
-    byPedido[k].rows.push(r);
-  });
-  const entries=Object.entries(byPedido).slice(0,30);
-  if(!entries.length){document.getElementById('dash-recent').innerHTML='<div class="empty-state"><div class="empty-state-text">Sin datos para el año en curso</div></div>';return;}
-  let html='<table class="data-table"><thead><tr><th>Pedido</th><th>Tipo</th><th>Proveedor</th><th>Mes</th><th style="text-align:center">Lin.</th><th class="num">Coste</th><th class="num">Refact.</th><th>Docs</th><th>Dingo</th></tr></thead><tbody>';
-  entries.forEach(function(entry){
-    const k=entry[0],g=entry[1];
-    const tc=sc(g.rows),tr2=sr(g.rows);
-    const ds=getDingoGroupState(g.rows),dcls=ds==='all'?'yes':ds==='partial'?'partial':'no',dlbl=ds==='all'?'V':ds==='partial'?'~':'X';
-    const pdKey=g.numPedido||g.nombre||k;
-    const pdDocs=(pedidoData[pdKey]&&pedidoData[pdKey].docs)||{};
-    const hP=!!pdDocs.presupuesto,hA=!!pdDocs.albaran,hF=!!pdDocs.factura;
-    const meses=[...new Set(g.rows.map(function(r){return r.mes}).filter(Boolean))];
-    const tc2=g.tipo==='mantenimiento'?'#7c5cfc':g.tipo==='alquiler'?'#2563eb':'#16a34a';
-    const tl=g.tipo==='mantenimiento'?'MANT':g.tipo==='alquiler'?'ALQ':'COMP';
-    const rowCls=ds==='all'?'row-dingo':g.numPedido?'row-pedido':'';
-    const isSingle=k.startsWith('_solo_');
-    const title=isSingle?(g.rows[0].descripcion||g.rows[0].elemento||'--'):(g.nombre||g.numPedido||k);
-    const numTag=g.numPedido&&g.nombre?'<span style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-left:6px;background:var(--bg3);padding:1px 5px;border-radius:3px;border:1px solid var(--border)">'+g.numPedido+'</span>':'';
-    html+='<tr class="'+rowCls+'">'+
-      '<td class="highlight" style="font-weight:'+(g.rows.length>1?'600':'400')+'">'+title+numTag+'</td>'+
-      '<td><span style="font-size:10px;font-family:var(--mono);font-weight:600;padding:2px 8px;border-radius:20px;background:'+tc2+'18;color:'+tc2+';border:1px solid '+tc2+'30">'+tl+'</span></td>'+
-      '<td>'+(g.proveedor?'<span class="badge-prov">'+g.proveedor+'</span>':'')+'</td>'+
-      '<td style="font-size:11px;color:var(--text3)">'+meses.join('/')+'</td>'+
-      '<td style="font-family:var(--mono);font-size:12px;color:var(--text3);text-align:center">'+g.rows.length+'</td>'+
-      '<td class="num">'+f2(tc)+'</td><td class="num positive">'+f2(tr2)+'</td>'+
-      '<td><div class="doc-status"><span class="doc-pill '+(hP?'has':'missing')+'">PRE</span><span class="doc-pill '+(hA?'has':'missing')+'">ALB</span><span class="doc-pill '+(hF?'has':'missing')+'">FAC</span></div></td>'+
-      '<td><span class="badge-dingo '+dcls+'">'+dlbl+'</span></td>'+
-    '</tr>';
-  });
-  html+='</tbody></table>';
-  document.getElementById('dash-recent').innerHTML=html;
-}
+  set('dash-mant-mes',f2(sc(mantM)));set('dash-mant-mes-c',f2(sc(mantM)));set('dash-mant-mes-r',f2(sr(mantM)));setDif('dash-mant-mes-d',sr(mantM)-sc(mantM));set('dash-mant-mes-sub',mantM.length+' registros · '+curMes);
+  set('dash-alq-mes',f2(sc(alqM)));set('dash-alq-mes-c',f2(sc(alqM)));set('dash-alq-mes-r',f2(sr(alqM)));setDif('dash-alq-mes-d',sr(alqM)-sc(alqM));set('dash-alq-mes-sub',alqM.length+' registros · '+curMes);
+  set('dash-comp-mes',f2(sc(compM)));set('dash-comp-mes-c',f2(sc(compM)));set('dash-comp-mes-r',f2(sr(compM)));setDif('dash-comp-mes-d',sr(compM)-sc(compM));set('dash-comp-mes-sub',compM.length+' registros · '+curMes);
+  const tcM=sc(allM),trM=sr(allM),tdM=trM-tcM;
+  set('dash-total-mes-c',f2(tdM));set('dash-total-mes-cc',f2(tcM));set('dash-total-mes-r',f2(trM));setDif('dash-total-mes-d',tdM);
+
+  // ALERTS
+  const allData=[...data.mantenimiento,...data.alquiler,...data.compras];
+  set('dash-docs-pending',allData.filter(function(r){return !r.documentos||!r.documentos.length}).length);
+  set('dash-sin-refact',allData.filter(function(r){return r.refact==null||r.refact===''}).length);
+  set('dash-sin-pedido',allData.filter(function(r){return !r.num_pedido&&!r.nombre_pedido}).length);
 function gotoPendingDocs(){const now=new Date(),y=String(now.getFullYear());showDashFilter('Docs pendientes - '+y,[...data.mantenimiento,...data.alquiler,...data.compras].filter(function(r){return String(r.ano||r['año'])===y&&(!docs[r.id]||(!docs[r.id].presupuesto&&!docs[r.id].albaran&&!docs[r.id].factura))}));}
 function gotoSinRefact(){const now=new Date(),y=String(now.getFullYear());showDashFilter('Sin refacturar - '+y,[...data.mantenimiento,...data.alquiler,...data.compras].filter(function(r){return String(r.ano||r['año'])===y&&!r.refact}));}
 function gotoSinNumPedido(){const now=new Date(),y=String(now.getFullYear());showDashFilter('Sin num. pedido - '+y,[...data.mantenimiento,...data.alquiler,...data.compras].filter(function(r){return String(r.ano||r['año'])===y&&!r.num_pedido&&!r.nombre_pedido}));}
