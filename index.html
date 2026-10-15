@@ -1239,8 +1239,10 @@ function renderGroupedTable(tipo,rows){
     group.rows.forEach(function(r){const p=r.produccion||'(sin prod)';if(!byProd[p])byProd[p]=[];byProd[p].push(r)});
     Object.entries(byProd).forEach(function(pe){
       const prod=pe[0],pRows=pe[1];
-      const pt=pRows.reduce(function(s,r){return s+(r.refact||0)},0);
-      html+='<tr class="prod-subheader group-rows" data-key="'+safeKey+'" style="'+ds+'"><td colspan="'+colCount+'">'+prod+' . '+fmt(pt)+'</td></tr>';
+      const pc=pRows.reduce(function(s,r){return s+(r.coste||0)},0);
+      const pr=pRows.reduce(function(s,r){return s+(r.refact||0)},0);
+      const pd=pr-pc;
+      html+='<tr class="prod-subheader group-rows" data-key="'+safeKey+'" style="'+ds+'"><td colspan="'+colCount+'">'+prod+' &nbsp;·&nbsp; C: '+fmt(pc)+(pr?'&nbsp;&nbsp;R: '+fmt(pr):'')+'&nbsp;&nbsp;<span style="color:'+(pd>=0?'var(--green)':'var(--red)')+'">Dif: '+(pd>=0?'+':'')+fmt(pd)+'</span></td></tr>';
       pRows.forEach(function(r){
         const rCls2=r.dingo?'row-dingo':(r.num_pedido||r.nombre_pedido)?'row-pedido':'';
         html+='<tr class="group-rows '+rCls2+'" data-key="'+safeKey+'" style="'+ds+'">';
@@ -1760,7 +1762,7 @@ async function saveNuevoPedido(){
     // Delete removed lines if editing
     if(npEditingPedidoNombre){
       const existingDbIds=npLineas.filter(function(l){return!l.isNew&&l.dbId;}).map(function(l){return l.dbId;});
-      const oldRows=data[tipo].filter(function(r){return r.nombre_pedido===npEditingPedidoNombre||r.num_pedido===npEditingPedidoNombre;});
+      const oldRows=data[tipo].filter(function(r){return r.nombre_pedido===npEditingPedidoNombre||(!r.nombre_pedido&&r.num_pedido===npEditingPedidoNombre);});
       const toDelete=oldRows.filter(function(r){return!existingDbIds.includes(r.id);}).map(function(r){return r.id;});
       if(toDelete.length)await sb.from('gastos').delete().in('id',toDelete);
     }
